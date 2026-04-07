@@ -1,0 +1,9 @@
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+# We use tsx to run the server in dev, but for production we'd normally build it.
+# For this example, we'll just run it with tsx or node if pre-compiled.
+EXPOSE 3000
+CMD ["npm", "run", "dev"]

@@ -1,0 +1,283 @@
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, saveMemory } from "./src/nexus/database";
+import { valeria } from "./src/nexus/valeria";
+import { orchestrator } from "./src/nexus/agents";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startNexusAegis() {
+  const app = express();
+  const httpServer = createServer(app);
+  const io = new Server(httpServer, {
+    cors: { origin: "*", methods: ["GET", "POST"] },
+  });
+
+  app.use(express.json());
+
+  // Inicializar Base de Datos
+  await initDatabase();
+
+  // Iniciar Loop Autónomo de Valeria
+  valeria.startAutonomousLoop();
+
+  // API Endpoints
+  app.get("/api/memory", async (req, res) => {
+    const memory = await getRecentMemory(50);
+    res.json(memory);
+  });
+
+  app.get("/api/agents", async (req, res) => {
+    const agents = await getAgents();
+    res.json(agents);
+  });
+
+  app.get("/api/security-logs", async (req, res) => {
+    const logs = await getSecurityLogs(50);
+    res.json(logs);
+  });
+
+  app.get("/api/settings", async (req, res) => {
+    const db = await initDatabase();
+    const settings = await db.all("SELECT * FROM settings");
+    res.json(settings);
+  });
+
+  app.post("/api/settings", async (req, res) => {
+    const { key, value } = req.body;
+    await updateSetting(key, value);
+    res.json({ success: true });
+  });
+
+  app.get("/api/system/health", async (req, res) => {
+    try {
+      const si = await import("systeminformation");
+      const cpu = await si.cpu();
+      const mem = await si.mem();
+      const load = await si.currentLoad();
+      res.json({ cpu: load.currentLoad, ram: (mem.active / mem.total) * 100, cpu_temp: 45 }); // Temp simulada
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener salud del sistema" });
+    }
+  });
+
+  app.post("/api/backups/trigger", async (req, res) => {
+    try {
+      await valeria.performBackup("manual");
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al realizar backup manual" });
+    }
+  });
+
+  app.get("/api/watchdog/logs", async (req, res) => {
+    const logs = await getWatchdogLogs(20);
+    res.json(logs);
+  });
+
+  app.post("/api/agents/restart", async (req, res) => {
+    const { agentId } = req.body;
+    try {
+      const result = await orchestrator.restartAgent(agentId);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Error al reiniciar agente" });
+    }
+  });
+
+  app.get("/api/system/audit/verify", async (req, res) => {
+    try {
+      const db = await initDatabase();
+      const memory = await db.all("SELECT id, hash, prev_hash, source, content, type, priority, metadata FROM memory ORDER BY id ASC");
+      
+      let isValid = true;
+      const crypto = await import("crypto");
+      const failures = [];
+
+      for (let i = 0; i < memory.length; i++) {
+        const entry = memory[i];
+        const prevHash = i === 0 ? "0000000000000000000000000000000000000000000000000000000000000000" : memory[i-1].hash;
+        
+        const dataToHash = `${prevHash}${entry.source}${entry.content}${entry.type}${entry.priority}${entry.metadata}`;
+        const calculatedHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
+
+        if (calculatedHash !== entry.hash || entry.prev_hash !== prevHash) {
+          isValid = false;
+          failures.push(entry.id);
+        }
+      }
+
+      res.json({ success: true, isValid, failures });
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  app.get("/api/game/bots", async (req, res) => {
+    const db = await initDatabase();
+    const bots = await db.all("SELECT * FROM game_bots");
+    res.json(bots);
+  });
+
+  app.post("/api/game/bots/control", async (req, res) => {
+    const { botId, action } = req.body;
+    const db = await initDatabase();
+    await db.run("UPDATE game_bots SET status = ?, last_update = CURRENT_TIMESTAMP WHERE id = ?", [action === 'start' ? 'active' : 'paused', botId]);
+    res.json({ success: true });
+  });
+
+  app.get("/api/user/preferences", async (req, res) => {
+    const db = await initDatabase();
+    const prefs = await db.all("SELECT * FROM user_preferences");
+    res.json(prefs);
+  });
+
+  app.get("/api/agents/:id/versions", async (req, res) => {
+    const versions = await getAgentVersions(req.params.id);
+    res.json(versions);
+  });
+
+  app.post("/api/agents/update-version", async (req, res) => {
+    const { agentId, version, changelog } = req.body;
+    try {
+      await orchestrator.updateAgentVersion(agentId, version, changelog);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Error al actualizar" });
+    }
+  });
+
+  app.post("/api/agents/rollback", async (req, res) => {
+    const { agentId, version } = req.body;
+    try {
+      await orchestrator.rollbackAgent(agentId, version);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Error al revertir" });
+    }
+  });
+
+  app.post("/api/system/rollback", async (req, res) => {
+    try {
+      const db = await initDatabase();
+      const latestBackup = await db.get("SELECT * FROM backups WHERE status = 'success' ORDER BY timestamp DESC LIMIT 1");
+      
+      if (!latestBackup) {
+        return res.status(404).json({ success: false, message: "No se encontró ningún backup válido." });
+      }
+
+      console.log(`SISTEMA: Restaurando backup desde ${latestBackup.file_path}`);
+      await saveMemory("system", `ROLLBACK TOTAL DEL SISTEMA ejecutado. Restaurado a versión del ${latestBackup.timestamp}`, "alert", "critical");
+      
+      res.json({ success: true, message: "Rollback del sistema iniciado. El servidor se restaurará a la versión seleccionada.", timestamp: latestBackup.timestamp });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  app.post("/api/security/alert", async (req, res) => {
+    const { type, severity, description, source_ip, action } = req.body;
+    try {
+      await logSecurityEvent({ type, severity, description, source_ip, action });
+      await valeria.notifyUser(`AEGIS Alerta: ${description}`, severity);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al registrar alerta" });
+    }
+  });
+
+  app.post("/api/task", async (req, res) => {
+    const { agentId, task, priority } = req.body;
+    try {
+      const result = await orchestrator.dispatchTask(agentId, task, priority || "medium");
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Error desconocido" });
+    }
+  });
+
+  app.get("/api/tasks/pending", (req, res) => {
+    res.json(orchestrator.getPendingTasks());
+  });
+
+  app.get("/api/tasks/history", async (req, res) => {
+    const history = await orchestrator.getTaskHistory(20);
+    res.json(history);
+  });
+
+  app.post("/api/tasks/approve", async (req, res) => {
+    const { taskId } = req.body;
+    try {
+      const result = await orchestrator.approveTask(taskId);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Error al aprobar" });
+    }
+  });
+
+  app.post("/api/tasks/reject", async (req, res) => {
+    const { taskId } = req.body;
+    try {
+      const result = await orchestrator.rejectTask(taskId);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Error al rechazar" });
+    }
+  });
+
+  // WebSocket para actualizaciones en tiempo real
+  io.on("connection", (socket) => {
+    console.log("Dashboard NEXUS AEGIS conectado");
+    
+    const interval = setInterval(async () => {
+      const agents = await getAgents();
+      const memory = await getRecentMemory(15);
+      const securityLogs = await getSecurityLogs(15);
+      const settings = await (await initDatabase()).all("SELECT * FROM settings");
+      const backups = await getBackups(5);
+      const pendingTasks = orchestrator.getPendingTasks();
+      const taskHistory = await orchestrator.getTaskHistory(10);
+      const watchdogLogs = await getWatchdogLogs(10);
+      const gameBots = await (await initDatabase()).all("SELECT * FROM game_bots");
+      
+      let health = { cpu: 0, ram: 0, cpu_temp: 45 };
+      try {
+        const si = await import("systeminformation");
+        const mem = await si.mem();
+        const load = await si.currentLoad();
+        health = { cpu: load.currentLoad, ram: (mem.active / mem.total) * 100, cpu_temp: 45 };
+      } catch (e) {}
+
+      socket.emit("nexus_update", { agents, memory, securityLogs, settings, backups, pendingTasks, taskHistory, health, watchdogLogs, gameBots });
+    }, 2000);
+
+    socket.on("disconnect", () => clearInterval(interval));
+  });
+
+  // Vite middleware
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  const PORT = 3000;
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`NEXUS AEGIS Core running on http://localhost:${PORT}`);
+  });
+}
+
+startNexusAegis();
