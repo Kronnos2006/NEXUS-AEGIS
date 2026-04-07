@@ -152,6 +152,7 @@ export default function App() {
   const [historyFilter, setHistoryFilter] = useState({ agent: 'all', status: 'all' });
   const [gameBots, setGameBots] = useState<GameBot[]>([]);
   const [userPrefs, setUserPrefs] = useState<UserPreference[]>([]);
+  const [eccProposals, setEccProposals] = useState<Memory[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -182,6 +183,11 @@ export default function App() {
       setWatchdogLogs(data.watchdogLogs);
       setGameBots(data.gameBots || []);
       if (data.health) setHealth(data.health);
+      
+      // Fetch ECC proposals if memory changed
+      fetch("/api/ecc/proposals")
+        .then(res => res.json())
+        .then(setEccProposals);
     });
 
     return () => {
@@ -319,6 +325,18 @@ export default function App() {
     }
   };
 
+  const applyEccProposal = async (proposalId: string) => {
+    try {
+      await fetch("/api/ecc/proposals/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposalId }),
+      });
+    } catch (err) {
+      console.error("Error applying ECC proposal:", err);
+    }
+  };
+
   const getSettingValue = (key: string) => settings.find(s => s.key === key)?.value;
 
   const formatTime = (timestamp: string) => {
@@ -414,7 +432,7 @@ export default function App() {
               <Shield className="text-white" size={20} />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white tracking-tight">NEXUS AEGIS <span className="text-red-500 text-xs ml-1">v2.0</span></h1>
+              <h1 className="text-lg font-bold text-white tracking-tight">NEXUS AEGIS <span className="text-red-500 text-xs ml-1">v3.5 Alpha</span></h1>
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
                 <span className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
@@ -731,6 +749,18 @@ export default function App() {
                       className={`w-12 h-6 rounded-full transition-all relative ${getSettingValue('low_power_mode') === 'true' ? 'bg-blue-500' : 'bg-gray-700'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${getSettingValue('low_power_mode') === 'true' ? 'right-1' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-[#0a0a0a] rounded-2xl border border-[#1a1a1a]">
+                    <div>
+                      <p className="font-bold text-white">ECC Motor (Self-Improvement)</p>
+                      <p className="text-xs text-gray-500">Permite a Valeria proponer mejoras de código y optimizaciones.</p>
+                    </div>
+                    <button 
+                      onClick={() => updateSetting('ecc_motor_enabled', getSettingValue('ecc_motor_enabled') === 'true' ? 'false' : 'true')}
+                      className={`w-12 h-6 rounded-full transition-all relative ${getSettingValue('ecc_motor_enabled') === 'true' ? 'bg-blue-600' : 'bg-gray-700'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${getSettingValue('ecc_motor_enabled') === 'true' ? 'right-1' : 'left-1'}`} />
                     </button>
                   </div>
                   <div className="p-4 bg-[#0a0a0a] rounded-2xl border border-[#1a1a1a] space-y-3">
@@ -1074,6 +1104,47 @@ export default function App() {
         )}
         {activeTab === 'system' && (
           <div className="space-y-8">
+            {/* ECC Motor Proposals */}
+            <div className="bg-[#141414] border border-[#222] p-8 rounded-3xl space-y-6">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <Brain className="text-blue-500" /> ECC Motor: Auto-Mejora Continua
+              </h2>
+              <div className="space-y-4">
+                {eccProposals.length === 0 && <p className="text-gray-500 text-center py-4">No hay propuestas de mejora pendientes.</p>}
+                {eccProposals.map((prop) => {
+                  const meta = JSON.parse(prop.metadata || '{}');
+                  return (
+                    <div key={prop.id} className="p-6 bg-[#0a0a0a] rounded-2xl border border-[#1a1a1a] flex flex-col gap-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-500/10 rounded-lg">
+                            <Code className="text-blue-500" size={16} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-white">Propuesta de Optimización</p>
+                            <p className="text-[10px] text-gray-500 font-mono">ID: {meta.proposalId}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-gray-600 font-mono">{formatTime(prop.timestamp)}</span>
+                      </div>
+                      <p className="text-xs text-gray-300 leading-relaxed">{prop.content}</p>
+                      <div className="flex gap-3 pt-2">
+                        <button 
+                          onClick={() => applyEccProposal(meta.proposalId)}
+                          className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20"
+                        >
+                          Aplicar Parche
+                        </button>
+                        <button className="px-4 py-2 bg-[#1a1a1a] hover:bg-[#222] text-gray-400 hover:text-white text-[10px] font-bold rounded-xl transition-all">
+                          Ignorar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Watchdog Status */}
             <div className="bg-[#141414] border border-[#222] p-8 rounded-3xl space-y-6">
               <h2 className="text-2xl font-bold text-white flex items-center gap-3">

@@ -95,6 +95,7 @@ export async function initDatabase() {
     ['public_key', ''],
     ['private_key', ''],
     ['game_control_enabled', 'false'],
+    ['ecc_motor_enabled', 'false'],
     ['nms_auto_farming', 'false']
   ];
 

@@ -201,6 +201,23 @@ async function startNexusAegis() {
     }
   });
 
+  app.get("/api/ecc/proposals", async (req, res) => {
+    const db = await initDatabase();
+    const proposals = await db.all("SELECT * FROM memory WHERE type = 'proposal_pro' ORDER BY timestamp DESC LIMIT 10");
+    res.json(proposals);
+  });
+
+  app.post("/api/ecc/proposals/apply", async (req, res) => {
+    const { proposalId } = req.body;
+    try {
+      // Simulación de aplicación de parche ECC
+      await saveMemory("system", `ECC Motor: Parche aplicado con éxito (ID: ${proposalId}). El sistema ha sido optimizado.`, "info", "high");
+      res.json({ success: true, message: "Parche aplicado correctamente." });
+    } catch (error) {
+      res.status(500).json({ error: "Error al aplicar el parche" });
+    }
+  });
+
   app.get("/api/tasks/pending", (req, res) => {
     res.json(orchestrator.getPendingTasks());
   });

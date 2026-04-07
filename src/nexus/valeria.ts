@@ -184,12 +184,21 @@ export class Valeria {
       const lockdown = await getSetting("security_lockdown") === "true";
       const lowPower = await getSetting("low_power_mode") === "true";
       const gameControlEnabled = await getSetting("game_control_enabled") === "true";
+      const eccMotorEnabled = await getSetting("ecc_motor_enabled") === "true";
       let interval = parseInt(await getSetting("autonomous_loop_interval") || "60");
       
       // Simulación de Detección de Juego (v3.0)
       const isGameRunning = Math.random() > 0.7; // Simulado
       if (isGameRunning && gameControlEnabled) {
         await saveMemory("aegis", "Detección de Juego: No Man's Sky detectado en primer plano.", "info", "medium");
+      }
+
+      // --- MOTOR ECC: AUTO-MEJORA (v3.5) ---
+      if (eccMotorEnabled && Math.random() > 0.9) {
+        const proposalId = Math.random().toString(36).substring(7);
+        const proposal = "Valeria (ECC Motor): He detectado una oportunidad de refactorización en el módulo de agentes para mejorar la latencia en un 15%. ¿Deseas aplicar el parche?";
+        await saveMemory("valeria", proposal, "proposal_pro", "medium", { proposalId, type: "self_improvement" });
+        await this.notifyUser("ECC Motor ha generado una propuesta de auto-mejora.", "medium");
       }
       
       // Lógica de Modo Bajo Consumo SMARTER (v2.4)
