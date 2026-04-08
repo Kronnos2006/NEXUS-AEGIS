@@ -5,12 +5,13 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, saveMemory } from "./src/nexus/database";
+import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions } from "./src/nexus/database";
 import { valeria } from "./src/nexus/valeria";
 import { orchestrator } from "./src/nexus/agents";
 import { NemotronService } from "./src/nexus/nemotron";
 import { AGENT_IDS } from "./src/nexus/agents.constants";
 import { router } from "./src/nexus/router";
+import { Memory } from "./src/nexus/memory/memory";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -207,7 +208,7 @@ async function startNexusAegis() {
       }
 
       console.log(`SISTEMA: Restaurando backup desde ${latestBackup.file_path}`);
-      await saveMemory("system", `ROLLBACK TOTAL DEL SISTEMA ejecutado. Restaurado a versión del ${latestBackup.timestamp}`, "alert", "critical");
+      await Memory.record(`ROLLBACK TOTAL DEL SISTEMA ejecutado. Restaurado a versión del ${latestBackup.timestamp}`, "system", "alert", "critical");
       
       res.json({ success: true, message: "Rollback del sistema iniciado. El servidor se restaurará a la versión seleccionada.", timestamp: latestBackup.timestamp });
     } catch (err) {
@@ -239,7 +240,7 @@ async function startNexusAegis() {
   app.post("/api/chat", async (req, res) => {
     const { message, history } = req.body;
     try {
-      await saveMemory("user", message, 'info', 'medium');
+      await Memory.record(message, 'user', 'info', 'medium');
       
       // --- NUEVO FLUJO: ROUTING INTELIGENTE ---
       const agentResponse = await router.routeTask(message, "web_chat", "medium");
@@ -257,7 +258,7 @@ async function startNexusAegis() {
         responseText = agentResponse.reply || valeria.generateLocalReply(message);
       }
       
-      await saveMemory("valeria", responseText, 'decision', 'low');
+      await Memory.record(responseText, 'valeria', 'decision', 'low');
       res.json({ success: true, response: responseText });
     } catch (error) {
       console.error("Error en Chat:", error);
@@ -275,11 +276,11 @@ async function startNexusAegis() {
       const filePath = req.file.path;
       
       const message = `He subido un archivo: ${fileName}. Por favor, analízalo o guárdalo en mi base de datos de conocimientos.`;
-      await saveMemory("user", message, 'info', 'medium', { file: fileName, path: filePath });
+      await Memory.record(message, 'user', 'info', 'medium', { file: fileName, path: filePath });
 
       const response = `Valeria: Archivo '${fileName}' recibido y procesado en el núcleo de NEXUS. He iniciado un análisis de integridad y lo he indexado en tu base de conocimientos privada, José Mario. ¿Deseas que ejecute alguna acción específica con este recurso?`;
       
-      await saveMemory("valeria", response, 'decision', 'low');
+      await Memory.record(response, 'valeria', 'decision', 'low');
       res.json({ success: true, response, file: fileName });
     } catch (error) {
       res.status(500).json({ error: "Error al procesar archivo" });
@@ -296,7 +297,7 @@ async function startNexusAegis() {
     const { proposalId } = req.body;
     try {
       // Simulación de aplicación de parche ECC
-      await saveMemory("system", `ECC Motor: Parche aplicado con éxito (ID: ${proposalId}). El sistema ha sido optimizado.`, "info", "high");
+      await Memory.record(`ECC Motor: Parche aplicado con éxito (ID: ${proposalId}). El sistema ha sido optimizado.`, "system", "info", "high");
       res.json({ success: true, message: "Parche aplicado correctamente." });
     } catch (error) {
       res.status(500).json({ error: "Error al aplicar el parche" });

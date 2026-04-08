@@ -1,6 +1,7 @@
-import { updateAgentStatus, saveMemory, logSecurityEvent, getSetting, saveAgentVersion, getAgentVersions, updateSetting } from "./database";
+import { updateAgentStatus, logSecurityEvent, getSetting, saveAgentVersion, getAgentVersions, updateSetting } from "./database";
 import { valeria } from "./valeria";
 import { AGENT_IDS } from "./agents.constants";
+import { Memory } from "./memory/memory";
 
 import crypto from "crypto";
 
@@ -304,7 +305,7 @@ export class AgentOrchestrator {
     const limit = parseInt(await getSetting("max_actions_per_hour") || "50");
     if (this.actionCounter >= limit) {
       const msg = `Límite de acciones por hora alcanzado (${limit}). NEXUS AEGIS pausado.`;
-      await saveMemory("orchestrator", msg, 'alert', 'critical');
+      await Memory.record(msg, 'orchestrator', 'alert', 'critical');
       await valeria.notifyUser(msg, "critical");
       throw new Error(msg);
     }
@@ -350,7 +351,7 @@ export class AgentOrchestrator {
     }
 
     this.agents.set(agentId, newAgent);
-    await saveMemory("orchestrator", `Agente ${config.name} reiniciado individualmente por el Watchdog.`, 'alert', 'medium');
+    await Memory.record(`Agente ${config.name} reiniciado individualmente por el Watchdog.`, 'orchestrator', 'alert', 'medium');
     return { success: true };
   }
 
@@ -377,7 +378,7 @@ export class AgentOrchestrator {
     const lockdown = await getSetting("security_lockdown") === "true";
     if (lockdown) {
       const msg = `Acción bloqueada por LOCKDOWN de AEGIS: ${agentId} intentó ejecutar tarea.`;
-      await saveMemory("orchestrator", msg, 'alert', 'critical');
+      await Memory.record(msg, 'orchestrator', 'alert', 'critical');
       throw new Error("SISTEMA EN BLOQUEO DE SEGURIDAD (LOCKDOWN).");
     }
 
@@ -390,7 +391,7 @@ export class AgentOrchestrator {
     // Bloqueo de Control de Juego si no está habilitado
     if (agentId.includes("game") && !gameControlEnabled) {
       const msg = `Acción de Juego BLOQUEADA: El control de escritorio no está habilitado en AEGIS.`;
-      await saveMemory("orchestrator", msg, 'alert', 'high');
+      await Memory.record(msg, 'orchestrator', 'alert', 'high');
       throw new Error(msg);
     }
     
@@ -400,7 +401,7 @@ export class AgentOrchestrator {
 
     if (isCriticalAction && !hasPermission) {
       const errorMsg = `Acceso denegado: El agente ${agentId} no tiene permisos para acciones de prioridad ${priority}.`;
-      await saveMemory("orchestrator", errorMsg, 'alert', 'high');
+      await Memory.record(errorMsg, 'orchestrator', 'alert', 'high');
       throw new Error(errorMsg);
     }
 
@@ -414,7 +415,7 @@ export class AgentOrchestrator {
       this.pendingTasks.set(taskId, { agentId, task, priority });
       
       const msg = `Acción ${isHighRisk ? 'de ALTO RIESGO' : 'crítica'} pendiente de aprobación (ID: ${taskId}, Risk Score: ${riskScore}): ${agentId} intentó ${JSON.stringify(task)}.`;
-      await saveMemory("orchestrator", msg, 'alert', 'critical', { riskScore });
+      await Memory.record(msg, 'orchestrator', 'alert', 'critical', { riskScore });
       await valeria.notifyUser(msg, "critical");
       
       return { status: "pending_approval", taskId, message: "Acción requiere aprobación humana en Modo Seguro.", riskScore };
@@ -455,7 +456,7 @@ export class AgentOrchestrator {
     signature = sign(null, Buffer.from(dataToSign), currentPrivKey!).toString('hex');
 
     this.pendingTasks.delete(taskId);
-    await saveMemory("orchestrator", `Acción APROBADA y FIRMADA ASIMÉTRICAMENTE [Ed25519: ${signature.substring(0, 16)}...]: ${pending.agentId} ejecutando ${JSON.stringify(pending.task)}`, 'info', pending.priority, { signature, algorithm: "Ed25519" });
+    await Memory.record(`Acción APROBADA y FIRMADA ASIMÉTRICAMENTE [Ed25519: ${signature.substring(0, 16)}...]: ${pending.agentId} ejecutando ${JSON.stringify(pending.task)}`, 'orchestrator', 'info', pending.priority as any, { signature, algorithm: "Ed25519" });
     return this.executeAgentTask(agent, pending.task, pending.priority);
   }
 
@@ -463,7 +464,7 @@ export class AgentOrchestrator {
     if (!this.pendingTasks.has(taskId)) throw new Error("Tarea no encontrada");
     const pending = this.pendingTasks.get(taskId);
     this.pendingTasks.delete(taskId);
-    await saveMemory("orchestrator", `Acción RECHAZADA por el usuario: ${pending?.agentId} intentó ${JSON.stringify(pending?.task)}`, 'alert', 'medium');
+    await Memory.record(`Acción RECHAZADA por el usuario: ${pending?.agentId} intentó ${JSON.stringify(pending?.task)}`, 'orchestrator', 'alert', 'medium');
     return { status: "rejected" };
   }
 
@@ -487,7 +488,7 @@ export class AgentOrchestrator {
 
     await saveAgentVersion(agentId, newVersion, changelog, (agent as any).config);
     await this.reportAgentStatus(agent);
-    await saveMemory("orchestrator", `Agente ${agentId} actualizado de v${oldVersion} a v${newVersion}.`, 'info', 'medium');
+    await Memory.record(`Agente ${agentId} actualizado de v${oldVersion} a v${newVersion}.`, 'orchestrator', 'info', 'medium');
   }
 
   public async rollbackAgent(agentId: string, version: string) {
@@ -500,7 +501,7 @@ export class AgentOrchestrator {
     if (agent) {
       (agent as any).config = config;
       await this.reportAgentStatus(agent);
-      await saveMemory("orchestrator", `Rollback exitoso del agente ${agentId} a la versión v${version}.`, 'alert', 'high');
+      await Memory.record(`Rollback exitoso del agente ${agentId} a la versión v${version}.`, 'orchestrator', 'alert', 'high');
     }
   }
 
@@ -511,22 +512,22 @@ export class AgentOrchestrator {
 
   private async executeAgentTask(agent: BaseAgent, task: any, priority: string) {
     const startTime = Date.now();
-    await saveMemory("agent", `Tarea asignada a ${agent.constructor.name}: ${JSON.stringify(task)}`, 'info', priority);
+    await Memory.record(`Tarea asignada a ${agent.constructor.name}: ${JSON.stringify(task)}`, 'agent', 'info', priority as any);
     
     try {
       const result = await agent.processTask(task);
       const duration = Date.now() - startTime;
       
-      await saveMemory("agent", `Tarea completada por ${agent.constructor.name} en ${duration}ms: ${JSON.stringify(result)}`, 'info', priority);
+      await Memory.record(`Tarea completada por ${agent.constructor.name} en ${duration}ms: ${JSON.stringify(result)}`, 'agent', 'info', priority as any);
       
-      // Registrar métricas (simulado en memoria por ahora)
-      console.log(`[METRICS] Agent: ${agent.constructor.name}, Duration: ${duration}ms, Status: Success`);
+      // Registrar métricas en memoria persistente avanzada
+      await Memory.logAgent((agent as any).config.id, task, result, duration);
       
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : "Error desconocido";
-      await saveMemory("agent", `Tarea fallida en ${agent.constructor.name} tras ${duration}ms: ${errorMsg}`, 'alert', 'high');
+      await Memory.record(`Tarea fallida en ${agent.constructor.name} tras ${duration}ms: ${errorMsg}`, 'agent', 'alert', 'high');
       console.log(`[METRICS] Agent: ${agent.constructor.name}, Duration: ${duration}ms, Status: Failed, Error: ${errorMsg}`);
       throw error;
     }

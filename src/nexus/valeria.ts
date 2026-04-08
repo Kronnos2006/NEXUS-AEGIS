@@ -1,10 +1,11 @@
 import { Telegraf } from "telegraf";
 import cron from "node-cron";
-import { saveMemory, initDatabase, logSecurityEvent, getSetting, logBackup, logWatchdogEvent, updateSetting } from "./database";
+import { initDatabase, logSecurityEvent, getSetting, logBackup, logWatchdogEvent, updateSetting } from "./database";
 import { orchestrator } from "./agents";
 import { AGENT_IDS } from "./agents.constants";
 import { NemotronService } from "./nemotron";
 import { router } from "./router";
+import { Memory } from "./memory/memory";
 import fs from "fs";
 import path from "path";
 
@@ -132,7 +133,7 @@ export class Valeria {
       const message = ctx.message.text;
       const safeMode = await getSetting("safe_mode") === "true";
       
-      await saveMemory("user", message, 'info', 'medium');
+      await Memory.record(message, 'user', 'info', 'medium');
       console.log("📩 Telegram:", message);
       
       try {
@@ -153,7 +154,7 @@ export class Valeria {
           finalReply = agentResponse.reply || this.generateLocalReply(message);
         }
 
-        await saveMemory("valeria", finalReply, 'decision', 'low');
+        await Memory.record(finalReply, 'valeria', 'decision', 'low');
         ctx.reply(finalReply);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Error al procesar comando.";
@@ -214,14 +215,14 @@ export class Valeria {
       // Simulación de Detección de Juego (v3.0)
       const isGameRunning = Math.random() > 0.7; // Simulado
       if (isGameRunning && gameControlEnabled) {
-        await saveMemory("aegis", "Detección de Juego: No Man's Sky detectado en primer plano.", "info", "medium");
+        await Memory.record("Detección de Juego: No Man's Sky detectado en primer plano.", "aegis", "info", "medium");
       }
 
       // --- MOTOR ECC: AUTO-MEJORA (v3.5) ---
       if (eccMotorEnabled && Math.random() > 0.9) {
         const proposalId = Math.random().toString(36).substring(7);
         const proposal = "Valeria (ECC Motor): He detectado una oportunidad de refactorización en el módulo de agentes para mejorar la latencia en un 15%. ¿Deseas aplicar el parche?";
-        await saveMemory("valeria", proposal, "proposal_pro", "medium", { proposalId, type: "self_improvement" });
+        await Memory.record(proposal, "valeria", "proposal_pro", "medium", { proposalId, type: "self_improvement" });
         await this.notifyUser("ECC Motor ha generado una propuesta de auto-mejora.", "medium");
       }
       
@@ -261,10 +262,10 @@ export class Valeria {
         let logMsg = "Ciclo autónomo completado.";
         if (experimental) {
           logMsg = "[EXPERIMENTAL] Probando nuevas heurísticas de seguridad y optimización de recursos.";
-          await saveMemory("valeria", "Ejecutando ciclo en MODO EXPERIMENTAL. Analizando nuevas fronteras de IA.", "experimental", "medium");
+          await Memory.record("Ejecutando ciclo en MODO EXPERIMENTAL. Analizando nuevas fronteras de IA.", "valeria", "experimental", "medium");
         }
 
-        await saveMemory("valeria", logMsg, 'info', 'low', { safeMode, experimental });
+        await Memory.record(logMsg, "valeria", 'info', 'low', { safeMode, experimental });
         
         // Simulación de detección de anomalías
         if (Math.random() > 0.95) {
@@ -320,7 +321,7 @@ export class Valeria {
     const fullMessage = `${prefix}${message}`;
     console.log(`Valeria Notify: ${fullMessage}`);
     
-    await saveMemory("valeria", fullMessage, 'alert', severity);
+    await Memory.record(fullMessage, "valeria", 'alert', severity as any);
   }
 }
 

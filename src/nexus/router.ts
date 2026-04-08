@@ -1,6 +1,6 @@
 import { AGENT_IDS, AgentId } from "./agents.constants";
 import { orchestrator } from "./agents";
-import { saveMemory } from "./database";
+import { Memory } from "./memory/memory";
 
 export class IntelligentRouter {
   /**
@@ -68,6 +68,7 @@ export class IntelligentRouter {
     const startTime = Date.now();
     
     console.log(`[ROUTER] Intenciones detectadas: ${agentIds.join(", ")} | Mensaje: "${message}"`);
+    await Memory.record(`Intenciones detectadas: ${agentIds.join(", ")}`, 'router', 'decision', 'low', { message, agentIds });
     
     const results = [];
     for (const agentId of agentIds) {
@@ -89,8 +90,8 @@ export class IntelligentRouter {
         console.log(`[ROUTER] Agente: ${agentId} | Tiempo: ${duration}ms | Resultado: Success`);
         results.push({ agentId, ...result });
 
-        // Si es una multi-delegación, guardamos memoria de cada paso
-        await saveMemory("router", `Tarea procesada por ${agentId}`, 'info', 'low', { agentId, duration });
+        // Registrar en memoria persistente avanzada
+        await Memory.logAgent(agentId, { message, source }, result, duration);
 
       } catch (error) {
         const duration = Date.now() - startTime;
