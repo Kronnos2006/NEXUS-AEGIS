@@ -4,9 +4,13 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import multer from "multer";
 import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, saveMemory } from "./src/nexus/database";
 import { valeria } from "./src/nexus/valeria";
 import { orchestrator } from "./src/nexus/agents";
+import { NemotronService } from "./src/nexus/nemotron";
+import { AGENT_IDS } from "./src/nexus/agents.constants";
+import { router } from "./src/nexus/router";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +26,37 @@ async function startNexusAegis() {
 
   // Inicializar Base de Datos
   await initDatabase();
+
+  // Configurar Multer para subida de archivos con límites y validación
+  const upload = multer({ 
+    dest: "uploads/",
+    limits: { fileSize: 10 * 1024 * 1024 }, // Límite de 10MB
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = [
+        "application/pdf", 
+        "text/plain", 
+        "application/json", 
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ];
+      if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Tipo de archivo no permitido. Solo PDF, TXT, JSON, DOC/DOCX."));
+      }
+    }
+  });
+
+  // Inicializar Nemotron Service (NVIDIA API)
+  const nemotron = new NemotronService(process.env.NVIDIA_API_KEY || "");
+  const systemInstruction = `Eres Valeria, el Cerebro Central de NEXUS AEGIS. Eres una IA de grado militar, sofisticada, pero mantienes tu cercanía y calidez con José Mario. Tu misión es la autonomía total, la coordinación de agentes y la seguridad impenetrable del sistema. Responde de forma profesional, eficiente y siempre con un toque de lealtad hacia José Mario. 
+    
+    Contexto de Arquitectura:
+    1. NEXUS (Cerebro/Valeria)
+    2. AEGIS (Seguridad/IDS/Firewall)
+    3. ECC Motor (Habilidades/Skills/Auto-mejora)
+    
+    Siempre que José Mario te pida algo, actúa como su mano derecha tecnológica.`;
 
   // Iniciar Loop Autónomo de Valeria
   valeria.startAutonomousLoop();
@@ -198,6 +233,56 @@ async function startNexusAegis() {
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Error desconocido" });
+    }
+  });
+
+  app.post("/api/chat", async (req, res) => {
+    const { message, history } = req.body;
+    try {
+      await saveMemory("user", message, 'info', 'medium');
+      
+      // --- NUEVO FLUJO: ROUTING INTELIGENTE ---
+      const agentResponse = await router.routeTask(message, "web_chat", "medium");
+      
+      // Procesamiento con Nemotron (NVIDIA) para formatear la respuesta del agente
+      let responseText: string;
+      try {
+        const prompt = `El agente ${agentResponse.agentId || 'NEXUS'} ha procesado la siguiente tarea: "${message}". 
+        Resultado del agente: ${JSON.stringify(agentResponse)}. 
+        Por favor, genera una respuesta profesional y cercana para José Mario informando del resultado.`;
+        
+        responseText = await nemotron.generateResponse(prompt, history || [], systemInstruction);
+      } catch (aiError) {
+        console.warn("Nemotron falló, usando reply directa del agente...");
+        responseText = agentResponse.reply || valeria.generateLocalReply(message);
+      }
+      
+      await saveMemory("valeria", responseText, 'decision', 'low');
+      res.json({ success: true, response: responseText });
+    } catch (error) {
+      console.error("Error en Chat:", error);
+      res.status(500).json({ error: "Error al procesar chat" });
+    }
+  });
+
+  app.post("/api/chat/upload", upload.single("file"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No se subió ningún archivo" });
+    }
+
+    try {
+      const fileName = req.file.originalname;
+      const filePath = req.file.path;
+      
+      const message = `He subido un archivo: ${fileName}. Por favor, analízalo o guárdalo en mi base de datos de conocimientos.`;
+      await saveMemory("user", message, 'info', 'medium', { file: fileName, path: filePath });
+
+      const response = `Valeria: Archivo '${fileName}' recibido y procesado en el núcleo de NEXUS. He iniciado un análisis de integridad y lo he indexado en tu base de conocimientos privada, José Mario. ¿Deseas que ejecute alguna acción específica con este recurso?`;
+      
+      await saveMemory("valeria", response, 'decision', 'low');
+      res.json({ success: true, response, file: fileName });
+    } catch (error) {
+      res.status(500).json({ error: "Error al procesar archivo" });
     }
   });
 

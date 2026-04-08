@@ -1,74 +1,348 @@
-# NEXUS AEGIS: Sistema Autónomo de IA y Seguridad Adaptativa
+# NEXUS AEGIS
 
-NEXUS AEGIS es una arquitectura de grado militar diseñada para correr en Windows 11 con Docker, centrada en la autonomía total, la orquestación multi-agente y la seguridad impenetrable (AEGIS).
+## Sistema Autónomo de IA y Seguridad Adaptativa
 
-## Arquitectura del Sistema
+NEXUS AEGIS es una plataforma de inteligencia artificial autónoma basada en arquitectura multi-agente, diseñada para operar como un cerebro central capaz de delegar tareas, analizar amenazas y automatizar procesos complejos.
+
+El sistema está construido para ejecutarse en entornos Windows 11, Linux o contenedores Docker, con un enfoque en:
+
+* Autonomía
+* Seguridad
+* Escalabilidad
+* Orquestación Inteligente
+* IA avanzada (Nemotron NVIDIA)
+
+---
+
+# Arquitectura General del Sistema
 
 ```
-[ USUARIO (Telegram) ] <--> [ VALERIA (Cerebro Central) ] <--> [ DASHBOARD (React) ]
-                                |
-                                v
-                        [ MEMORIA (SQLite/PG) ]
-                                |
-        ---------------------------------------------------------
-        |               |               |               |       |
-[ NEXUS AGENTS ] <--> [ AEGIS SECURITY ] <--> [ IDS MONITOR ] <--> [ HONEYPOT ]
+[ Usuario (Telegram / Web) ]
+            │
+            ▼
+[ VALERIA - Cerebro Central ]
+            │
+            ▼
+[ Router Inteligente ]
+            │
+            ▼
+[ Orchestrator ]
+            │
+ ─────────────────────────────────
+ │        │        │        │
+ ▼        ▼        ▼        ▼
+Code    Aegis   Finance  Assistant
+Agent   Agent   Agent    Agent
+            │
+            ▼
+[ Nemotron (NVIDIA API) ]
+            │
+            ▼
+[ Usuario ]
 ```
 
-### Componentes Principales:
+---
 
-1.  **Cerebro Central (Valeria)**:
-    *   **Loop Autónomo (60s)**: Evaluación continua de infraestructura y amenazas.
-    *   **Orquestación**: Creación y eliminación dinámica de agentes.
-    *   **Interfaz Telegram**: Control total vía `@luma_zvezda_bot`.
+# Componentes Principales
 
-2.  **Sistema AEGIS (Seguridad)**:
-    *   **IDS (Intrusion Detection System)**: Monitoreo de red en tiempo real.
-    *   **Defensa Activa**: Bloqueo automático de IPs y cierre de puertos.
-    *   **Honeypot**: Captura y análisis de técnicas de ataque.
-    *   **Respuesta a Incidentes**: Aislamiento de procesos y backups automáticos.
+## Valeria — Cerebro Central
 
-3.  **Sub-Agentes NEXUS**:
-    *   **WebDev**: Generación de código React y despliegue.
-    *   **Marketing**: Automatización de contenido y métricas.
-    *   **Monitor**: Vigilancia de hardware (CPU/RAM/GPU).
-    *   **Code**: Auditoría de seguridad y refactorización.
+Valeria es el núcleo del sistema.
 
-## Instalación y Despliegue
+Funciones:
 
-### Requisitos:
-*   Docker Desktop (WSL2 Backend)
-*   Node.js v20+
-*   NVIDIA API Key (Nemotron 120B)
-*   Telegram Bot Token
+* Orquestación multi-agente
+* Gestión de memoria contextual
+* Comunicación con Nemotron
+* Delegación automática de tareas
+* Control del sistema completo
 
-### Pasos para correr:
+Capacidades:
 
-1.  **Configurar Variables de Entorno**:
-    Crea un archivo `.env` con:
-    ```env
-    TELEGRAM_BOT_TOKEN="tu_token_aqui"
-    GEMINI_API_KEY="tu_nvidia_api_key_aqui"
-    NODE_ENV=development
-    ```
+* Conversación inteligente
+* Delegación automática
+* Control del sistema
+* Monitoreo de agentes
 
-2.  **Instalar Dependencias**:
-    ```bash
-    npm install
-    ```
+---
 
-3.  **Iniciar NEXUS AEGIS**:
-    ```bash
-    npm run dev
-    ```
+# Router Inteligente (v3.8 Alpha)
 
-### Despliegue con Docker Compose:
+El Router Inteligente analiza los mensajes y selecciona automáticamente el agente más adecuado.
 
-```bash
+Ejemplo:
+
+"Analiza este código"
+→ CodeAgent
+
+"Revisa la seguridad"
+→ AegisAgent
+
+"Precio BTC"
+→ FinanceAgent
+
+Fallback:
+
+Si la intención no es clara:
+
+→ assistant-1
+
+---
+
+# Orquestador
+
+El Orquestador gestiona:
+
+* Registro de agentes
+* Dispatch de tareas
+* Métricas de ejecución
+* Supervisión del flujo
+
+Funciones:
+
+* dispatchTask()
+* registerAgent()
+* monitorAgent()
+
+---
+
+# Sistema AEGIS — Seguridad
+
+AEGIS es el módulo de seguridad del sistema.
+
+Funciones:
+
+* Monitoreo de agentes
+* Validación de tareas
+* Protección contra fallos
+* Auditoría del sistema
+
+Capacidades:
+
+* Seguridad en tiempo real
+* Reinicio de agentes
+* Prevención de fallos
+
+---
+
+# Agentes del Sistema
+
+## Assistant Agent (LumaHelper)
+
+Funciones:
+
+* Conversación general
+* Respuestas fallback
+* Asistencia general
+
+---
+
+## Code Agent
+
+Funciones:
+
+* Auditoría de código
+* Refactorización
+* Generación de código
+
+---
+
+## Aegis Agent
+
+Funciones:
+
+* Auditoría de seguridad
+* Análisis del sistema
+* Prevención de amenazas
+
+---
+
+## Finance Agent
+
+Funciones:
+
+* Análisis financiero
+* Datos crypto
+* Métricas económicas
+
+---
+
+## Marketing Agent
+
+Funciones:
+
+* Generación de contenido
+* Estrategias marketing
+* Automatización campañas
+
+---
+
+## Monitor Agent
+
+Funciones:
+
+* Monitoreo CPU
+* Monitoreo RAM
+* Estado sistema
+
+---
+
+# Motor IA
+
+El sistema utiliza:
+
+Nemotron (NVIDIA API)
+
+Funciones:
+
+* Procesamiento lenguaje natural
+* Explicación de respuestas
+* Generación inteligente
+
+Fallback:
+
+Si Nemotron falla:
+
+→ generateLocalReply()
+
+---
+
+# Sistema de Memoria
+
+Memoria:
+
+* Contexto conversación
+* Historial usuario
+* Logs sistema
+
+Opciones:
+
+* SQLite
+* PostgreSQL
+
+---
+
+# Watchdog
+
+Sistema automático de monitoreo.
+
+Funciones:
+
+* Detectar fallos
+* Reiniciar agentes
+* Monitorear ejecución
+
+---
+
+# Flujo del Sistema
+
+Usuario
+↓
+Telegram/Web
+↓
+Valeria
+↓
+Router
+↓
+Orchestrator
+↓
+Agente
+↓
+Nemotron
+↓
+Usuario
+
+---
+
+# Instalación
+
+## Requisitos
+
+* Node.js v20+
+* Docker (Opcional)
+* NVIDIA API Key
+* Telegram Bot Token
+
+---
+
+# Configuración
+
+Crear archivo `.env`
+
+```
+TELEGRAM_BOT_TOKEN=your_token
+NVIDIA_API_KEY=your_key
+NODE_ENV=development
+```
+
+---
+
+# Instalación Dependencias
+
+```
+npm install
+```
+
+---
+
+# Ejecutar Sistema
+
+```
+npm run dev
+```
+
+---
+
+# Docker
+
+```
 docker-compose up --build
 ```
 
-## Próximos Objetivos
-*   Implementar el módulo IDS avanzado en Python con Scapy.
-*   Integrar el sistema de aprendizaje con MITRE ATT&CK.
-*   Automatización completa de respuesta a Ransomware.
+---
+
+# Características Actuales
+
+* Arquitectura multi-agente
+* Router inteligente
+* Orquestador
+* IA Nemotron
+* Watchdog
+* Seguridad AEGIS
+* Fallback automático
+* Logging
+
+---
+
+# Funciones Futuras
+
+* Multi-agente paralelo
+* Memoria persistente avanzada
+* Dashboard profesional
+* Auto aprendizaje
+* Sistema plugins
+* Control remoto
+
+---
+
+# Objetivos Futuro
+
+* IA autónoma completa
+* Auto optimización
+* Sistema defensivo avanzado
+* Integración cloud
+
+---
+
+# Estado del Proyecto
+
+Versión: v3.8 Alpha
+Estado: Estable
+Arquitectura: Multi-Agente
+IA: Nemotron NVIDIA
+
+---
+
+# Licencia
+
+Proyecto privado — NEXUS AEGIS

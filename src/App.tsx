@@ -29,6 +29,7 @@ import {
   MousePointer2,
   Volume2,
   Ghost,
+  Paperclip,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -144,7 +145,7 @@ export default function App() {
   const [watchdogLogs, setWatchdogLogs] = useState<WatchdogLog[]>([]);
   const [health, setHealth] = useState<SystemHealth>({ cpu: 0, ram: 0, cpu_temp: 0 });
   const [connected, setConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'security' | 'agents' | 'system' | 'game'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'security' | 'agents' | 'system' | 'game' | 'chat'>('dashboard');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [agentVersions, setAgentVersions] = useState<AgentVersion[]>([]);
   const [lockdownConfirm, setLockdownConfirm] = useState(false);
@@ -153,7 +154,16 @@ export default function App() {
   const [gameBots, setGameBots] = useState<GameBot[]>([]);
   const [userPrefs, setUserPrefs] = useState<UserPreference[]>([]);
   const [eccProposals, setEccProposals] = useState<Memory[]>([]);
+  const [chatMessage, setChatMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [memory, activeTab]);
 
   useEffect(() => {
     socketRef.current = io();
@@ -337,6 +347,49 @@ export default function App() {
     }
   };
 
+  const sendChatMessage = async () => {
+    if (!chatMessage.trim() || isSending) return;
+    setIsSending(true);
+    try {
+      // Obtener historial relevante (últimos 10 mensajes)
+      const history = memory
+        .filter(m => m.source === 'user' || m.source === 'valeria')
+        .slice(0, 10)
+        .reverse();
+
+      await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: chatMessage, history }),
+      });
+      setChatMessage("");
+    } catch (err) {
+      console.error("Error sending chat message:", err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setIsSending(true);
+    try {
+      await fetch("/api/chat/upload", {
+        method: "POST",
+        body: formData,
+      });
+    } catch (err) {
+      console.error("Error uploading file:", err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const getSettingValue = (key: string) => settings.find(s => s.key === key)?.value;
 
   const formatTime = (timestamp: string) => {
@@ -445,6 +498,7 @@ export default function App() {
           <nav className="hidden md:flex items-center gap-1 bg-[#141414] p-1 rounded-xl border border-[#222]">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: Layout },
+              { id: 'chat', label: 'Comandos', icon: MessageSquare },
               { id: 'security', label: 'Seguridad', icon: ShieldAlert },
               { id: 'agents', label: 'Agentes', icon: Bot },
               { id: 'game', label: 'Game Bots', icon: Gamepad2 },
@@ -658,6 +712,124 @@ export default function App() {
               </div>
             </section>
           </>
+        )}
+
+        {activeTab === 'chat' && (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 h-[calc(100vh-180px)]">
+            {/* Chat Interface */}
+            <div className="lg:col-span-3 flex flex-col bg-[#141414] border border-[#222] rounded-3xl overflow-hidden shadow-2xl">
+              <div className="p-6 border-b border-[#222] flex justify-between items-center bg-[#1a1a1a]">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                    <Brain className="text-purple-500" size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Cerebro Central: Valeria</h2>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">Canal Directo de Comandos</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">Online</span>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                {memory.filter(m => m.source === 'user' || m.source === 'valeria').slice().reverse().map((m) => (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={m.id}
+                    className={`flex ${m.source === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] p-4 rounded-2xl ${
+                      m.source === 'user' 
+                        ? 'bg-blue-600 text-white rounded-tr-none' 
+                        : 'bg-[#0a0a0a] border border-[#222] text-gray-200 rounded-tl-none'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] font-bold uppercase tracking-tighter opacity-60">
+                          {m.source === 'user' ? 'José Mario' : 'Valeria'}
+                        </span>
+                        <span className="text-[8px] opacity-40 font-mono">{formatTime(m.timestamp)}</span>
+                      </div>
+                      <p className="text-sm leading-relaxed">{m.content}</p>
+                    </div>
+                  </motion.div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              <div className="p-6 bg-[#0a0a0a] border-t border-[#222]">
+                <div className="flex gap-3">
+                  <label className="p-4 bg-[#141414] border border-[#222] hover:border-purple-500/50 text-gray-400 hover:text-white rounded-2xl transition-all cursor-pointer">
+                    <Paperclip size={20} />
+                    <input type="file" className="hidden" onChange={uploadFile} />
+                  </label>
+                  <input
+                    type="text"
+                    value={chatMessage}
+                    onChange={(e) => setChatMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
+                    placeholder="Escribe una orden para Valeria..."
+                    className="flex-1 bg-[#141414] border border-[#222] rounded-2xl px-6 py-4 text-sm focus:outline-none focus:border-purple-500/50 transition-all"
+                  />
+                  <button
+                    onClick={sendChatMessage}
+                    disabled={isSending || !chatMessage.trim()}
+                    className="p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-600 text-white rounded-2xl transition-all shadow-lg shadow-purple-600/20"
+                  >
+                    <Zap size={20} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Suggestions & Quick Actions */}
+            <div className="space-y-6">
+              <div className="bg-[#141414] border border-[#222] p-6 rounded-3xl space-y-6">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Brain className="text-purple-500" size={16} /> Sugerencias de Valeria
+                </h3>
+                <div className="space-y-3">
+                  {[
+                    "¿Cuál es el estado de la seguridad?",
+                    "Ejecuta un escaneo de vulnerabilidades PRO",
+                    "Optimiza el inventario en No Man's Sky",
+                    "Muestra el historial de auditoría",
+                  ].map((sug, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setChatMessage(sug)}
+                      className="w-full text-left p-3 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-purple-500/30 rounded-xl text-xs text-gray-400 hover:text-white transition-all group"
+                    >
+                      <span className="group-hover:text-purple-500 transition-colors">→</span> {sug}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-blue-600/5 border border-blue-600/20 p-6 rounded-3xl space-y-4">
+                <h3 className="text-sm font-bold text-blue-500 flex items-center gap-2">
+                  <ActivityIcon size={16} /> Contexto de Sesión
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">Agentes Activos</span>
+                    <span className="text-white font-bold">{agents.length}</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">Modo Seguro</span>
+                    <span className="text-emerald-500 font-bold">{getSettingValue('safe_mode') === 'true' ? 'ON' : 'OFF'}</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">Uptime Cerebro</span>
+                    <span className="text-white font-bold">99.9%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {activeTab === 'security' && (

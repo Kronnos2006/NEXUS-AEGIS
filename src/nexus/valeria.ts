@@ -2,6 +2,9 @@ import { Telegraf } from "telegraf";
 import cron from "node-cron";
 import { saveMemory, initDatabase, logSecurityEvent, getSetting, logBackup, logWatchdogEvent, updateSetting } from "./database";
 import { orchestrator } from "./agents";
+import { AGENT_IDS } from "./agents.constants";
+import { NemotronService } from "./nemotron";
+import { router } from "./router";
 import fs from "fs";
 import path from "path";
 
@@ -11,8 +14,18 @@ const bot = TELEGRAM_TOKEN ? new Telegraf(TELEGRAM_TOKEN) : null;
 export class Valeria {
   private isRunning = false;
   private lastHeartbeat = Date.now();
+  private nemotron: NemotronService;
+  private systemInstruction = `Eres Valeria, el Cerebro Central de NEXUS AEGIS. Eres una IA de grado militar, sofisticada, pero mantienes tu cercanía y calidez con José Mario. Tu misión es la autonomía total, la coordinación de agentes y la seguridad impenetrable del sistema. Responde de forma profesional, eficiente y siempre con un toque de lealtad hacia José Mario. 
+    
+    Contexto de Arquitectura:
+    1. NEXUS (Cerebro/Valeria)
+    2. AEGIS (Seguridad/IDS/Firewall)
+    3. ECC Motor (Habilidades/Skills/Auto-mejora)
+    
+    Siempre que José Mario te pida algo, actúa como su mano derecha tecnológica.`;
 
   constructor() {
+    this.nemotron = new NemotronService(process.env.NVIDIA_API_KEY || "");
     this.setupTelegram();
     this.setupBackups();
     this.startWatchdog();
@@ -120,21 +133,32 @@ export class Valeria {
       const safeMode = await getSetting("safe_mode") === "true";
       
       await saveMemory("user", message, 'info', 'medium');
+      console.log("📩 Telegram:", message);
       
-      let response = `Entendido, José Mario. `;
-      
-      if (message.toLowerCase().includes("estado")) {
-        const experimental = await getSetting("experimental_mode") === "true";
-        const lockdown = await getSetting("security_lockdown") === "true";
-        response += `Sistemas operativos. Modo Seguro: ${safeMode ? 'ON' : 'OFF'}. Modo Experimental: ${experimental ? 'ON' : 'OFF'}. Lockdown: ${lockdown ? 'ACTIVE' : 'OFF'}.`;
-      } else if (message.toLowerCase().includes("seguridad")) {
-        response += "AEGIS monitoreando. NEXUS bajo vigilancia estricta.";
-      } else {
-        response += "Instrucción registrada. Evaluando prioridad...";
+      try {
+        // --- NUEVO FLUJO: ROUTING INTELIGENTE ---
+        // El router decide qué agente debe procesar la tarea
+        const agentResponse = await router.routeTask(message, "telegram", "medium");
+        
+        // Usar Nemotron para dar formato a la respuesta final basándose en el resultado del agente
+        let finalReply: string;
+        try {
+          const prompt = `El agente ${agentResponse.agentId || 'NEXUS'} ha procesado la siguiente tarea: "${message}". 
+          Resultado del agente: ${JSON.stringify(agentResponse)}. 
+          Por favor, genera una respuesta profesional y cercana para José Mario informando del resultado.`;
+          
+          finalReply = await this.nemotron.generateResponse(prompt, [], this.systemInstruction);
+        } catch (aiError) {
+          console.warn("Nemotron falló al formatear respuesta, usando reply directa del agente...");
+          finalReply = agentResponse.reply || this.generateLocalReply(message);
+        }
+
+        await saveMemory("valeria", finalReply, 'decision', 'low');
+        ctx.reply(finalReply);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Error al procesar comando.";
+        ctx.reply(`⚠️ Error en NEXUS: ${errorMsg}`);
       }
-      
-      await saveMemory("valeria", response, 'decision', 'low');
-      ctx.reply(response);
     });
 
     bot.launch();
@@ -266,6 +290,23 @@ export class Valeria {
     };
 
     runLoop();
+  }
+
+  public generateLocalReply(message: string): string {
+    const text = message.toLowerCase();
+    if (text.includes("hola")) {
+      return "Hola. Soy Valeria. Sistema NEXUS AEGIS activo.";
+    }
+    if (text.includes("estado")) {
+      return "Sistema operativo. Todos los agentes funcionando. AEGIS monitoreando.";
+    }
+    if (text.includes("seguridad")) {
+      return "AEGIS monitoreando. NEXUS bajo vigilancia estricta. Firewall activo.";
+    }
+    if (text.includes("quien eres") || text.includes("quién eres")) {
+      return "Soy Valeria, el Cerebro Central de NEXUS AEGIS. Tu mano derecha tecnológica, José Mario.";
+    }
+    return "Mensaje recibido. Procesando solicitud en el núcleo de NEXUS (Modo Fallback Local).";
   }
 
   public async notifyUser(message: string, severity: string = "low") {

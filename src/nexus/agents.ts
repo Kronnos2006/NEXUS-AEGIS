@@ -1,5 +1,6 @@
 import { updateAgentStatus, saveMemory, logSecurityEvent, getSetting, saveAgentVersion, getAgentVersions, updateSetting } from "./database";
 import { valeria } from "./valeria";
+import { AGENT_IDS } from "./agents.constants";
 
 import crypto from "crypto";
 
@@ -39,20 +40,30 @@ export abstract class BaseAgent {
 // Agente Web Developer
 export class WebDevAgent extends BaseAgent {
   async processTask(task: any) {
-    await this.setStatus("working", `Creando página: ${task.name}`);
+    const message = task.message || task.name || "nueva página";
+    await this.setStatus("working", `Creando página: ${message}`);
     await new Promise(r => setTimeout(r, 3000));
-    await this.setStatus("idle", `Página ${task.name} desplegada.`);
-    return { success: true, url: `http://localhost:3000/${task.name}` };
+    await this.setStatus("idle", `Página ${message} desplegada.`);
+    return { 
+      success: true, 
+      reply: `Valeria: El agente WebDev ha desplegado la página '${message}' con éxito.`,
+      url: `http://localhost:3000/${message}` 
+    };
   }
 }
 
 // Agente Marketing
 export class MarketingAgent extends BaseAgent {
   async processTask(task: any) {
-    await this.setStatus("working", `Generando contenido para: ${task.platform}`);
+    const platform = task.platform || "redes sociales";
+    await this.setStatus("working", `Generando contenido para: ${platform}`);
     await new Promise(r => setTimeout(r, 2000));
-    await this.setStatus("idle", `Post en ${task.platform} programado.`);
-    return { success: true, content: "Post generado con éxito." };
+    await this.setStatus("idle", `Post en ${platform} programado.`);
+    return { 
+      success: true, 
+      reply: `Valeria: MarketingAgent ha programado el contenido para ${platform}.`,
+      content: "Post generado con éxito." 
+    };
   }
 }
 
@@ -65,7 +76,11 @@ export class MonitorAgent extends BaseAgent {
       await valeria.notifyUser("¡Alerta! CPU por encima del 90%.", "high");
     }
     await this.setStatus("idle", "Monitoreo completado.");
-    return stats;
+    return {
+      success: true,
+      reply: `Valeria: Monitorización finalizada. CPU: ${stats.cpu.toFixed(1)}%, RAM: ${stats.ram.toFixed(1)}%.`,
+      ...stats
+    };
   }
 }
 
@@ -86,7 +101,11 @@ export class AegisAgent extends BaseAgent {
     }
     
     await this.setStatus("idle", "Amenaza neutralizada.");
-    return { success: true, action: "Blocked" };
+    return { 
+      success: true, 
+      reply: `Valeria: AEGIS ha neutralizado la amenaza ${task.threat_id}. Acción: Bloqueo de IP ejecutado.`,
+      action: "Blocked" 
+    };
   }
 }
 
@@ -96,7 +115,11 @@ export class SalesAgent extends BaseAgent {
     await this.setStatus("working", `Gestionando lead: ${task.lead_name}`);
     await new Promise(r => setTimeout(r, 2500));
     await this.setStatus("idle", `Lead ${task.lead_name} actualizado en el CRM.`);
-    return { success: true, status: "Contacted" };
+    return { 
+      success: true, 
+      reply: `Valeria: SalesAgent ha actualizado el lead '${task.lead_name}' en el CRM.`,
+      status: "Contacted" 
+    };
   }
 }
 
@@ -117,6 +140,7 @@ export class CodeAgentPRO extends BaseAgent {
     
     return { 
       success: true, 
+      reply: `Valeria: CodeAgentPRO ha finalizado la auditoría de ${task.repo}. Se ha generado una propuesta de mejora técnica.`,
       type: "proposal_pro", 
       content: proposal, 
       code: refactor.output.improvedCode,
@@ -145,7 +169,11 @@ export class AegisAgentPRO extends BaseAgent {
     }
     
     await this.setStatus("idle", "Análisis PRO completado.");
-    return { success: true, scan_result: scan.output };
+    return { 
+      success: true, 
+      reply: `Valeria: AegisAgentPRO ha completado el análisis de seguridad en ${task.target || 'el sistema'}. ${scan.output.vulnerabilities.length} vulnerabilidades detectadas.`,
+      scan_result: scan.output 
+    };
   }
 }
 
@@ -163,7 +191,10 @@ export class ResearcherAgentPRO extends BaseAgent {
     };
     
     await this.setStatus("idle", `Investigación PRO sobre ${task.topic} finalizada.`);
-    return result;
+    return {
+      ...result,
+      reply: `Valeria: Investigación sobre '${task.topic}' completada. Resumen: ${result.summary}`
+    };
   }
 }
 
@@ -174,17 +205,45 @@ export class FinanceAgent extends BaseAgent {
     await new Promise(r => setTimeout(r, 3000));
     const btcPrice = 60000 + Math.random() * 5000;
     await this.setStatus("idle", `Análisis completado. BTC: $${btcPrice.toFixed(2)}`);
-    return { success: true, btc: btcPrice, trend: "bullish" };
+    return { 
+      success: true, 
+      reply: `Valeria: El análisis financiero indica que BTC está en $${btcPrice.toFixed(2)}. Tendencia: Bullish.`,
+      btc: btcPrice, 
+      trend: "bullish" 
+    };
   }
 }
 
 // Agente Asistente Personal (PersonalAssistant)
 export class PersonalAssistantAgent extends BaseAgent {
   async processTask(task: any) {
+    const message = task.message || "";
     await this.setStatus("working", "Gestionando calendario e IoT...");
     await new Promise(r => setTimeout(r, 2000));
+    
+    const reply = this.generateReply(message);
+    
     await this.setStatus("idle", "Tareas de asistencia completadas.");
-    return { success: true, schedule: "Hoy: 3 reuniones, 1 tarea crítica.", iot_status: "Luces ajustadas." };
+    return { 
+      success: true, 
+      reply,
+      schedule: "Hoy: 3 reuniones, 1 tarea crítica.", 
+      iot_status: "Luces ajustadas." 
+    };
+  }
+
+  private generateReply(message: string): string {
+    const text = message.toLowerCase();
+    if (text.includes("hola")) {
+      return "Hola. Soy Valeria. Sistema NEXUS AEGIS activo.";
+    }
+    if (text.includes("estado")) {
+      return "Sistema operativo. Todos los agentes funcionando.";
+    }
+    if (text.includes("quien eres") || text.includes("quién eres")) {
+      return "Soy Valeria, el Cerebro Central de NEXUS AEGIS. Tu mano derecha tecnológica, José Mario.";
+    }
+    return "Mensaje recibido. Procesando solicitud en el núcleo de NEXUS.";
   }
 }
 
@@ -214,7 +273,10 @@ export class GameAgentPRO extends BaseAgent {
     };
 
     await this.setStatus("idle", `GameAgent PRO completó ciclo en ${task.game}.`);
-    return result;
+    return {
+      ...result,
+      reply: `Valeria: GameAgent PRO ha finalizado el ciclo de automatización en ${task.game}. Estado: ${result.metrics.efficiency} eficiencia.`
+    };
   }
 }
 
@@ -250,18 +312,18 @@ export class AgentOrchestrator {
   }
 
   private initializeAgents() {
-    this.agents.set("web-dev-1", new WebDevAgent({ id: "web-dev-1", name: "DevMaster", type: "Web Developer", role: "agent", version: "1.2.0" }));
-    this.agents.set("marketing-1", new MarketingAgent({ id: "marketing-1", name: "PromoBot", type: "Marketing", role: "agent", version: "1.0.5" }));
-    this.agents.set("monitor-1", new MonitorAgent({ id: "monitor-1", name: "WatchDog", type: "Monitor", role: "security", version: "2.1.0" }));
-    this.agents.set("aegis-1", new AegisAgentPRO({ id: "aegis-1", name: "AegisShield PRO", type: "Security PRO", role: "security", version: "3.5.0" }));
-    this.agents.set("sales-1", new SalesAgent({ id: "sales-1", name: "DealMaker", type: "Sales", role: "agent", version: "1.0.0" }));
-    this.agents.set("code-1", new CodeAgentPRO({ id: "code-1", name: "CodeGuard PRO", type: "Code Engineer", role: "brain", version: "2.0.0" }));
+    this.agents.set(AGENT_IDS.WEB_DEV, new WebDevAgent({ id: AGENT_IDS.WEB_DEV, name: "DevMaster", type: "Web Developer", role: "agent", version: "1.2.0" }));
+    this.agents.set(AGENT_IDS.MARKETING, new MarketingAgent({ id: AGENT_IDS.MARKETING, name: "PromoBot", type: "Marketing", role: "agent", version: "1.0.5" }));
+    this.agents.set(AGENT_IDS.MONITOR, new MonitorAgent({ id: AGENT_IDS.MONITOR, name: "WatchDog", type: "Monitor", role: "security", version: "2.1.0" }));
+    this.agents.set(AGENT_IDS.AEGIS, new AegisAgentPRO({ id: AGENT_IDS.AEGIS, name: "AegisShield PRO", type: "Security PRO", role: "security", version: "3.5.0" }));
+    this.agents.set(AGENT_IDS.SALES, new SalesAgent({ id: AGENT_IDS.SALES, name: "DealMaker", type: "Sales", role: "agent", version: "1.0.0" }));
+    this.agents.set(AGENT_IDS.CODE, new CodeAgentPRO({ id: AGENT_IDS.CODE, name: "CodeGuard PRO", type: "Code Engineer", role: "brain", version: "2.0.0" }));
     
     // Nuevos Agentes PRO
-    this.agents.set("researcher-1", new ResearcherAgentPRO({ id: "researcher-1", name: "DeepSearch PRO", type: "Researcher PRO", role: "agent", version: "2.0.0" }));
-    this.agents.set("finance-1", new FinanceAgent({ id: "finance-1", name: "CryptoWhale", type: "Finance", role: "agent", version: "1.0.0" }));
-    this.agents.set("assistant-1", new PersonalAssistantAgent({ id: "assistant-1", name: "LumaHelper", type: "Assistant", role: "agent", version: "1.0.0" }));
-    this.agents.set("game-bot-1", new GameAgentPRO({ id: "game-bot-1", name: "NMS-Bot PRO", type: "Game Agent PRO", role: "agent", version: "1.0.0" }));
+    this.agents.set(AGENT_IDS.RESEARCHER, new ResearcherAgentPRO({ id: AGENT_IDS.RESEARCHER, name: "DeepSearch PRO", type: "Researcher PRO", role: "agent", version: "2.0.0" }));
+    this.agents.set(AGENT_IDS.FINANCE, new FinanceAgent({ id: AGENT_IDS.FINANCE, name: "CryptoWhale", type: "Finance", role: "agent", version: "1.0.0" }));
+    this.agents.set(AGENT_IDS.ASSISTANT, new PersonalAssistantAgent({ id: AGENT_IDS.ASSISTANT, name: "LumaHelper", type: "Assistant", role: "agent", version: "1.0.0" }));
+    this.agents.set(AGENT_IDS.GAME_BOT, new GameAgentPRO({ id: AGENT_IDS.GAME_BOT, name: "NMS-Bot PRO", type: "Game Agent PRO", role: "agent", version: "1.0.0" }));
   }
 
   public async restartAgent(agentId: string) {
