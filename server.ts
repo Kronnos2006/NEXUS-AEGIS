@@ -7,7 +7,8 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, getAgentMetrics, getStrategicGoals, addStrategicGoal, logBackup } from "./src/nexus/database";
 import { valeria, orchestrator, router } from "./src/nexus/core";
-import { NemotronService } from "./src/nexus/nemotron";
+import { askNexus } from "./src/nexus/ai/provider";
+import { VALERIA_SYSTEM_PROMPT } from "./src/nexus/ai/prompts";
 import { AGENT_IDS } from "./src/nexus/agents.constants";
 import { Memory } from "./src/nexus/memory/memory";
 import fs from "fs";
@@ -46,17 +47,6 @@ async function startNexusAegis() {
       }
     }
   });
-
-  // Inicializar Nemotron Service (NVIDIA API)
-  const nemotron = new NemotronService(process.env.NVIDIA_API_KEY || "");
-  const systemInstruction = `Eres Valeria, el Cerebro Central de NEXUS AEGIS. Eres una IA de grado militar, sofisticada, pero mantienes tu cercanía y calidez con José Mario. Tu misión es la autonomía total, la coordinación de agentes y la seguridad impenetrable del sistema. Responde de forma profesional, eficiente y siempre con un toque de lealtad hacia José Mario. 
-    
-    Contexto de Arquitectura:
-    1. NEXUS (Cerebro/Valeria)
-    2. AEGIS (Seguridad/IDS/Firewall)
-    3. ECC Motor (Habilidades/Skills/Auto-mejora)
-    
-    Siempre que José Mario te pida algo, actúa como su mano derecha tecnológica.`;
 
   // Iniciar Loop Autónomo de Valeria
   valeria.startAutonomousLoop();
@@ -271,16 +261,27 @@ async function startNexusAegis() {
       // --- NUEVO FLUJO: ROUTING INTELIGENTE ---
       const agentResponse = await router.routeTask(message, "web_chat", "medium");
       
-      // Procesamiento con Nemotron (NVIDIA) para formatear la respuesta del agente
+      // Procesamiento con NEXUS AI (Gemma 4 / Nemotron) para formatear la respuesta del agente
       let responseText: string;
       try {
-        const prompt = `El agente ${agentResponse.agentId || 'NEXUS'} ha procesado la siguiente tarea: "${message}". 
-        Resultado del agente: ${JSON.stringify(agentResponse)}. 
-        Por favor, genera una respuesta profesional y cercana para José Mario informando del resultado.`;
-        
-        responseText = await nemotron.generateResponse(prompt, history || [], systemInstruction);
+        responseText = await askNexus(
+          [
+            { role: "system", content: VALERIA_SYSTEM_PROMPT },
+            ... (history || []).map((m: any) => ({
+              role: m.source === 'user' ? 'user' : 'assistant',
+              content: m.content
+            })),
+            { 
+              role: "user", 
+              content: `El agente ${agentResponse.agentId || 'NEXUS'} ha procesado la siguiente tarea: "${message}". 
+              Resultado del agente: ${JSON.stringify(agentResponse)}. 
+              Por favor, genera una respuesta profesional y cercana para José Mario informando del resultado.` 
+            },
+          ],
+          "thinking"
+        );
       } catch (aiError) {
-        console.warn("Nemotron falló, usando reply directa del agente...");
+        console.warn("NEXUS AI falló, usando reply directa del agente...");
         responseText = agentResponse.reply || valeria.generateLocalReply(message);
       }
       
