@@ -8,7 +8,8 @@ export const AGENT_IDS = {
   RESEARCHER: "researcher-1",
   FINANCE: "finance-1",
   ASSISTANT: "assistant-1",
-  GAME_BOT: "game-bot-1"
+  GAME_BOT: "game-bot-1",
+  ARCHITECT: "architect-1"
 } as const;
 
 export type AgentId = typeof AGENT_IDS[keyof typeof AGENT_IDS];

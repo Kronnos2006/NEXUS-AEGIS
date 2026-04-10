@@ -1,4 +1,4 @@
-import { updateAgentStatus, logSecurityEvent, getSetting, saveAgentVersion, getAgentVersions, updateSetting } from "./database";
+import { updateAgentStatus, logSecurityEvent, getSetting, saveAgentVersion, getAgentVersions, updateSetting, updateAgentMetrics, getAgentMetrics, getStrategicGoals } from "./database";
 import { valeria } from "./valeria";
 import { AGENT_IDS } from "./agents.constants";
 import { Memory } from "./memory/memory";
@@ -281,6 +281,41 @@ export class GameAgentPRO extends BaseAgent {
   }
 }
 
+// Agente Arquitecto (v4.0)
+export class ArchitectAgent extends BaseAgent {
+  async processTask(task: any) {
+    await this.setStatus("working", "Analizando arquitectura y métricas sistémicas...");
+    
+    const metrics = await getAgentMetrics();
+    const goals = await getStrategicGoals();
+    
+    // Simulación de análisis de arquitectura
+    const bottlenecks = metrics.filter(m => m.avg_duration > 4000 || m.last_health_score < 80);
+    
+    let proposal = "ANÁLISIS DE ARQUITECTURA v4.0:\n";
+    if (bottlenecks.length > 0) {
+      proposal += `⚠️ Detectados cuellos de botella en: ${bottlenecks.map(b => b.agent_id).join(", ")}.\n`;
+      proposal += "Sugerencia: Optimizar lógica de procesamiento o aumentar timeouts.\n";
+    } else {
+      proposal += "✅ Arquitectura estable. Rendimiento óptimo detectado.\n";
+    }
+    
+    proposal += `\nObjetivos Estratégicos Activos: ${goals.length}\n`;
+    goals.forEach(g => {
+      proposal += `- ${g.goal} (Progreso: ${g.progress}%)\n`;
+    });
+
+    await this.setStatus("idle", "Análisis de arquitectura completado.");
+    
+    return {
+      success: true,
+      reply: `Valeria: El Agente Arquitecto ha finalizado el escaneo sistémico. ${bottlenecks.length > 0 ? 'Se han detectado áreas de mejora.' : 'El sistema opera con máxima eficiencia.'}`,
+      data: { metrics, bottlenecks, goals },
+      proposal
+    };
+  }
+}
+
 // Orquestador de Agentes con RBAC y Safe Mode
 export class AgentOrchestrator {
   private agents: Map<string, BaseAgent> = new Map();
@@ -325,6 +360,7 @@ export class AgentOrchestrator {
     this.agents.set(AGENT_IDS.FINANCE, new FinanceAgent({ id: AGENT_IDS.FINANCE, name: "CryptoWhale", type: "Finance", role: "agent", version: "1.0.0" }));
     this.agents.set(AGENT_IDS.ASSISTANT, new PersonalAssistantAgent({ id: AGENT_IDS.ASSISTANT, name: "LumaHelper", type: "Assistant", role: "agent", version: "1.0.0" }));
     this.agents.set(AGENT_IDS.GAME_BOT, new GameAgentPRO({ id: AGENT_IDS.GAME_BOT, name: "NMS-Bot PRO", type: "Game Agent PRO", role: "agent", version: "1.0.0" }));
+    this.agents.set(AGENT_IDS.ARCHITECT, new ArchitectAgent({ id: AGENT_IDS.ARCHITECT, name: "NexusArchitect", type: "Architect", role: "brain", version: "1.0.0" }));
   }
 
   public async restartAgent(agentId: string) {
@@ -347,6 +383,7 @@ export class AgentOrchestrator {
       case "Finance": newAgent = new FinanceAgent(config); break;
       case "Assistant": newAgent = new PersonalAssistantAgent(config); break;
       case "Game Agent PRO": newAgent = new GameAgentPRO(config); break;
+      case "Architect": newAgent = new ArchitectAgent(config); break;
       default: throw new Error(`Tipo de agente desconocido: ${config.type}`);
     }
 
@@ -523,11 +560,18 @@ export class AgentOrchestrator {
       // Registrar métricas en memoria persistente avanzada
       await Memory.logAgent((agent as any).config.id, task, result, duration);
       
+      // Actualizar métricas de desempeño (v4.0)
+      await updateAgentMetrics((agent as any).config.id, true, duration);
+      
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : "Error desconocido";
       await Memory.record(`Tarea fallida en ${agent.constructor.name} tras ${duration}ms: ${errorMsg}`, 'agent', 'alert', 'high');
+      
+      // Actualizar métricas de fallo (v4.0)
+      await updateAgentMetrics((agent as any).config.id, false, duration);
+      
       console.log(`[METRICS] Agent: ${agent.constructor.name}, Duration: ${duration}ms, Status: Failed, Error: ${errorMsg}`);
       throw error;
     }

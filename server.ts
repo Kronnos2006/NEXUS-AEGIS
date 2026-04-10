@@ -5,7 +5,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions } from "./src/nexus/database";
+import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, getAgentMetrics, getStrategicGoals, addStrategicGoal } from "./src/nexus/database";
 import { valeria } from "./src/nexus/valeria";
 import { orchestrator } from "./src/nexus/agents";
 import { NemotronService } from "./src/nexus/nemotron";
@@ -227,6 +227,24 @@ async function startNexusAegis() {
     }
   });
 
+  // --- ENDPOINTS v4.0 ---
+
+  app.get("/api/system/metrics", async (req, res) => {
+    const metrics = await getAgentMetrics();
+    res.json(metrics);
+  });
+
+  app.get("/api/system/goals", async (req, res) => {
+    const goals = await getStrategicGoals();
+    res.json(goals);
+  });
+
+  app.post("/api/system/goals", async (req, res) => {
+    const { goal, priority } = req.body;
+    await addStrategicGoal(goal, priority);
+    res.json({ success: true });
+  });
+
   app.post("/api/task", async (req, res) => {
     const { agentId, task, priority } = req.body;
     try {
@@ -347,6 +365,8 @@ async function startNexusAegis() {
       const taskHistory = await orchestrator.getTaskHistory(10);
       const watchdogLogs = await getWatchdogLogs(10);
       const gameBots = await (await initDatabase()).all("SELECT * FROM game_bots");
+      const agentMetrics = await getAgentMetrics();
+      const strategicGoals = await getStrategicGoals();
       
       let health = { cpu: 0, ram: 0, cpu_temp: 45 };
       try {
@@ -356,7 +376,7 @@ async function startNexusAegis() {
         health = { cpu: load.currentLoad, ram: (mem.active / mem.total) * 100, cpu_temp: 45 };
       } catch (e) {}
 
-      socket.emit("nexus_update", { agents, memory, securityLogs, settings, backups, pendingTasks, taskHistory, health, watchdogLogs, gameBots });
+      socket.emit("nexus_update", { agents, memory, securityLogs, settings, backups, pendingTasks, taskHistory, health, watchdogLogs, gameBots, agentMetrics, strategicGoals });
     }, 2000);
 
     socket.on("disconnect", () => clearInterval(interval));

@@ -1,6 +1,6 @@
 import { Telegraf } from "telegraf";
 import cron from "node-cron";
-import { initDatabase, logSecurityEvent, getSetting, logBackup, logWatchdogEvent, updateSetting } from "./database";
+import { initDatabase, logSecurityEvent, getSetting, logBackup, logWatchdogEvent, updateSetting, getStrategicGoals } from "./database";
 import { orchestrator } from "./agents";
 import { AGENT_IDS } from "./agents.constants";
 import { NemotronService } from "./nemotron";
@@ -16,6 +16,7 @@ export class Valeria {
   private isRunning = false;
   private lastHeartbeat = Date.now();
   private nemotron: NemotronService;
+  private requestHistory: { timestamp: number, ip: string }[] = [];
   private systemInstruction = `Eres Valeria, el Cerebro Central de NEXUS AEGIS. Eres una IA de grado militar, sofisticada, pero mantienes tu cercanía y calidez con José Mario. Tu misión es la autonomía total, la coordinación de agentes y la seguridad impenetrable del sistema. Responde de forma profesional, eficiente y siempre con un toque de lealtad hacia José Mario. 
     
     Contexto de Arquitectura:
@@ -132,14 +133,37 @@ export class Valeria {
     bot.on("text", async (ctx) => {
       const message = ctx.message.text;
       const safeMode = await getSetting("safe_mode") === "true";
+      const antiAiLevel = await getSetting("anti_ai_defense_level") || "medium";
       
+      // --- DEFENSA ANTI-IA AVANZADA (v4.0) ---
+      const now = Date.now();
+      const userIp = ctx.from?.id.toString() || "unknown";
+      this.requestHistory.push({ timestamp: now, ip: userIp });
+      
+      // Limpiar historial antiguo (> 1 min)
+      this.requestHistory = this.requestHistory.filter(r => now - r.timestamp < 60000);
+      
+      const recentRequests = this.requestHistory.filter(r => r.ip === userIp).length;
+      if (antiAiLevel !== "off" && recentRequests > 10) {
+        const msg = "DEFENSA ANTI-IA: Detectado patrón de peticiones no humano. Bloqueando temporalmente.";
+        await logSecurityEvent({
+          type: "anti_ai_trigger",
+          severity: "high",
+          description: `Usuario ${userIp} realizó ${recentRequests} peticiones en 60s.`,
+          source_ip: userIp,
+          action: "RATE_LIMIT_BLOCK"
+        });
+        return ctx.reply(msg);
+      }
+
       await Memory.record(message, 'user', 'info', 'medium');
       console.log("📩 Telegram:", message);
       
       try {
         // --- NUEVO FLUJO: ROUTING INTELIGENTE ---
         // El router decide qué agente debe procesar la tarea
-        const agentResponse = await router.routeTask(message, "telegram", "medium");
+        const simulationMode = await getSetting("simulation_mode") === "true";
+        const agentResponse = await router.routeTask(message, "telegram", "medium", { simulate: simulationMode });
         
         // Usar Nemotron para dar formato a la respuesta final basándose en el resultado del agente
         let finalReply: string;
@@ -224,6 +248,16 @@ export class Valeria {
         const proposal = "Valeria (ECC Motor): He detectado una oportunidad de refactorización en el módulo de agentes para mejorar la latencia en un 15%. ¿Deseas aplicar el parche?";
         await Memory.record(proposal, "valeria", "proposal_pro", "medium", { proposalId, type: "self_improvement" });
         await this.notifyUser("ECC Motor ha generado una propuesta de auto-mejora.", "medium");
+      }
+
+      // --- OBJETIVOS ESTRATÉGICOS (v4.0) ---
+      const goals = await getStrategicGoals();
+      for (const goal of goals) {
+        if (goal.status === 'active' && Math.random() > 0.8) {
+          console.log(`Valeria: Evaluando progreso del objetivo: ${goal.goal}`);
+          // Simulación de avance de objetivo
+          await initDatabase().then(db => db.run("UPDATE strategic_goals SET progress = MIN(100, progress + 5), updated_at = CURRENT_TIMESTAMP WHERE id = ?", [goal.id]));
+        }
       }
       
       // Lógica de Modo Bajo Consumo SMARTER (v2.4)

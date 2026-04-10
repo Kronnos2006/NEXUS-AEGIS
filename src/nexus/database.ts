@@ -78,6 +78,27 @@ export async function initDatabase() {
       status TEXT,
       type TEXT -- 'auto_6h', 'auto_24h', 'manual'
     );
+
+    -- Métricas de Desempeño de Agentes (v4.0)
+    CREATE TABLE IF NOT EXISTS agent_metrics (
+      agent_id TEXT PRIMARY KEY,
+      success_count INTEGER DEFAULT 0,
+      fail_count INTEGER DEFAULT 0,
+      avg_duration REAL DEFAULT 0,
+      last_health_score INTEGER DEFAULT 100,
+      last_update DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Intenciones a Largo Plazo / Objetivos Estratégicos (v4.0)
+    CREATE TABLE IF NOT EXISTS strategic_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      goal TEXT NOT NULL,
+      status TEXT DEFAULT 'active', -- 'active', 'completed', 'paused'
+      progress INTEGER DEFAULT 0,
+      priority TEXT DEFAULT 'medium',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Inicializar configuraciones por defecto
@@ -96,7 +117,10 @@ export async function initDatabase() {
     ['private_key', ''],
     ['game_control_enabled', 'false'],
     ['ecc_motor_enabled', 'false'],
-    ['nms_auto_farming', 'false']
+    ['nms_auto_farming', 'false'],
+    ['architect_mode', 'false'],
+    ['simulation_mode', 'false'],
+    ['anti_ai_defense_level', 'medium']
   ];
 
   for (const [key, value] of defaultSettings) {
@@ -270,4 +294,49 @@ export async function getSecurityLogs(limit: number = 50) {
 export async function getBackups(limit: number = 10) {
   const database = await initDatabase();
   return database.all("SELECT * FROM backups ORDER BY timestamp DESC LIMIT ?", [limit]);
+}
+
+// --- FUNCIONES v4.0 ---
+
+export async function updateAgentMetrics(agentId: string, success: boolean, duration: number) {
+  const database = await initDatabase();
+  const metrics = await database.get("SELECT * FROM agent_metrics WHERE agent_id = ?", [agentId]);
+  
+  if (!metrics) {
+    await database.run(
+      "INSERT INTO agent_metrics (agent_id, success_count, fail_count, avg_duration) VALUES (?, ?, ?, ?)",
+      [agentId, success ? 1 : 0, success ? 0 : 1, duration]
+    );
+  } else {
+    const newSuccessCount = metrics.success_count + (success ? 1 : 0);
+    const newFailCount = metrics.fail_count + (success ? 0 : 1);
+    const totalTasks = newSuccessCount + newFailCount;
+    const newAvgDuration = ((metrics.avg_duration * (totalTasks - 1)) + duration) / totalTasks;
+    
+    // Calcular Health Score (0-100)
+    const healthScore = Math.max(0, 100 - (newFailCount / totalTasks * 100));
+
+    await database.run(
+      "UPDATE agent_metrics SET success_count = ?, fail_count = ?, avg_duration = ?, last_health_score = ?, last_update = CURRENT_TIMESTAMP WHERE agent_id = ?",
+      [newSuccessCount, newFailCount, newAvgDuration, Math.round(healthScore), agentId]
+    );
+  }
+}
+
+export async function getAgentMetrics() {
+  const database = await initDatabase();
+  return database.all("SELECT * FROM agent_metrics");
+}
+
+export async function addStrategicGoal(goal: string, priority: string = 'medium') {
+  const database = await initDatabase();
+  await database.run(
+    "INSERT INTO strategic_goals (goal, priority) VALUES (?, ?)",
+    [goal, priority]
+  );
+}
+
+export async function getStrategicGoals() {
+  const database = await initDatabase();
+  return database.all("SELECT * FROM strategic_goals ORDER BY priority DESC, created_at DESC");
 }

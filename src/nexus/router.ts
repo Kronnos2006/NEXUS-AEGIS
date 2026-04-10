@@ -43,6 +43,10 @@ export class IntelligentRouter {
       detected.push({ id: AGENT_IDS.GAME_BOT, priority: 4 });
     }
 
+    if (text.includes("arquitectura") || text.includes("sistema") || text.includes("rendimiento") || text.includes("métrica")) {
+      detected.push({ id: AGENT_IDS.ARCHITECT, priority: 2 });
+    }
+
     if (detected.length === 0) {
       return [AGENT_IDS.ASSISTANT];
     }
@@ -57,7 +61,20 @@ export class IntelligentRouter {
   /**
    * Selecciona los agentes adecuados y enruta la tarea.
    */
-  public async routeTask(message: string, source: string = "unknown", priority: string = "medium", options: { routed?: boolean } = {}) {
+  public async routeTask(message: string, source: string = "unknown", priority: string = "medium", options: { routed?: boolean, simulate?: boolean } = {}) {
+    // Modo Simulación (v4.0)
+    if (options.simulate) {
+      console.log(`[ROUTER] SIMULACIÓN: Evaluando impacto de "${message}"`);
+      const agentIds = this.detectIntents(message);
+      return {
+        success: true,
+        simulation: true,
+        predictedAgents: agentIds,
+        riskScore: agentIds.includes(AGENT_IDS.AEGIS) ? 80 : 20,
+        reply: `SIMULACIÓN NEXUS: Si ejecutas esta acción, delegaré la tarea a: ${agentIds.join(", ")}. El riesgo estimado es ${agentIds.includes(AGENT_IDS.AEGIS) ? 'ALTO' : 'BAJO'}.`
+      };
+    }
+
     // Prevención de bucles
     if (options.routed) {
       console.log("[ROUTER] Mensaje ya enrutado. Saltando detección.");
