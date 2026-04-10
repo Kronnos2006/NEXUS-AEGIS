@@ -214,23 +214,6 @@ export async function cleanOldLogs() {
   console.log(`NEXUS: Limpieza de logs completada (Retención: ${retentionDays} días).`);
 }
 
-export async function saveMemory(source: string, content: string, type: string = 'info', priority: string = 'low', metadata: any = {}) {
-  const database = await initDatabase();
-  
-  // Hash Chaining Logic
-  const lastEntry = await database.get("SELECT hash FROM memory ORDER BY id DESC LIMIT 1");
-  const prevHash = lastEntry ? lastEntry.hash : "0000000000000000000000000000000000000000000000000000000000000000";
-  
-  const crypto = await import("crypto");
-  const dataToHash = `${prevHash}${source}${content}${type}${priority}${JSON.stringify(metadata)}`;
-  const hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
-
-  await database.run(
-    "INSERT INTO memory (source, content, type, priority, metadata, hash, prev_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [source, content, type, priority, JSON.stringify(metadata), hash, prevHash]
-  );
-}
-
 export async function logSecurityEvent(event: { type: string, severity: string, description: string, source_ip?: string, action?: string, is_nexus_blocked?: boolean }) {
   const database = await initDatabase();
   await database.run(

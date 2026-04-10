@@ -1,4 +1,4 @@
-import { saveMemory } from "./database";
+import { Memory } from "./memory/memory";
 
 export interface SkillResult {
   success: boolean;

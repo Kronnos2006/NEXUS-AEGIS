@@ -1,11 +1,13 @@
 import { Telegraf } from "telegraf";
 import cron from "node-cron";
-import { initDatabase, logSecurityEvent, getSetting, logBackup, logWatchdogEvent, updateSetting, getStrategicGoals } from "./database";
-import { orchestrator } from "./agents";
+import { initDatabase, logSecurityEvent, getSetting, logBackup, updateSetting } from "./database";
 import { AGENT_IDS } from "./agents.constants";
 import { NemotronService } from "./nemotron";
-import { router } from "./router";
 import { Memory } from "./memory/memory";
+import { aegis } from "./aegis";
+import { watchdog } from "./watchdog";
+import { goalSystem } from "./goals";
+import { orchestrator, router, setValeria } from "./core";
 import fs from "fs";
 import path from "path";
 
@@ -14,7 +16,6 @@ const bot = TELEGRAM_TOKEN ? new Telegraf(TELEGRAM_TOKEN) : null;
 
 export class Valeria {
   private isRunning = false;
-  private lastHeartbeat = Date.now();
   private nemotron: NemotronService;
   private requestHistory: { timestamp: number, ip: string }[] = [];
   private systemInstruction = `Eres Valeria, el Cerebro Central de NEXUS AEGIS. Eres una IA de grado militar, sofisticada, pero mantienes tu cercanía y calidez con José Mario. Tu misión es la autonomía total, la coordinación de agentes y la seguridad impenetrable del sistema. Responde de forma profesional, eficiente y siempre con un toque de lealtad hacia José Mario. 
@@ -28,119 +29,44 @@ export class Valeria {
 
   constructor() {
     this.nemotron = new NemotronService(process.env.NVIDIA_API_KEY || "");
+    setValeria(this);
     this.setupTelegram();
     this.setupBackups();
-    this.startWatchdog();
+    this.startWatchdogLoop();
   }
 
-  private startWatchdog() {
-    // El Watchdog es un proceso paranoico que vigila a Valeria
+  private startWatchdogLoop() {
     setInterval(async () => {
-      const now = Date.now();
-      const diff = now - this.lastHeartbeat;
-
-      // Heartbeat en archivo para redundancia
-      try {
-        fs.writeFileSync(path.join(process.cwd(), "nexus_heartbeat.txt"), now.toString());
-      } catch (e) {}
-
-      if (diff > 120000) { // 2 minutos sin latido
-        const msg = "WATCHDOG: Valeria no responde. Reiniciando cerebro y activando protocolos de emergencia.";
-        console.error(msg);
-        await logWatchdogEvent("brain_failure", "critical", `Heartbeat stale for ${diff}ms`);
-        await this.notifyUser(msg, "critical");
-        
-        // Reiniciar loop
-        this.isRunning = false;
-        this.startAutonomousLoop();
-      }
-
-      // Watchdog de Agentes de Juego (v3.0)
-      const db = await initDatabase();
-      const activeBots = await db.all("SELECT * FROM game_bots WHERE status = 'active'");
-      for (const bot of activeBots) {
-        // Simulación de detección de bot "trabado"
-        if (Math.random() > 0.95) {
-          await db.run("UPDATE game_bots SET status = 'stuck', last_action = 'Bot detectado como inactivo o trabado' WHERE id = ?", [bot.id]);
-          await logSecurityEvent({
-            type: "GAME_BOT_FAILURE",
-            severity: "high",
-            description: `Bot ${bot.game_name} (${bot.id}) se ha quedado trabado. Pausando por seguridad.`,
-            source_ip: "127.0.0.1",
-            action: "PAUSE_BOT"
-          });
-          await this.notifyUser(`ALERTA: Bot de ${bot.game_name} trabado. Pausado automáticamente.`, "high");
-        }
-      }
-
-      // Vigilancia de Agentes Individuales (Simulada)
-      // Si un agente tiene un error crítico reciente, el Watchdog lo reinicia
-      const agentFailures = await db.all("SELECT source, content FROM memory WHERE type = 'alert' AND priority = 'high' AND timestamp > datetime('now', '-1 minute')");
-      
-      for (const fail of agentFailures) {
-        if (fail.content.includes("Tarea fallida en")) {
-          const agentName = fail.content.split("en ")[1].split(" tras")[0];
-          // Mapear nombre a ID (en un sistema real sería más directo)
-          const agents = await db.all("SELECT id FROM agents WHERE name = ?", [agentName]);
-          if (agents.length > 0) {
-            console.log(`WATCHDOG: Detectado fallo en ${agentName}. Iniciando reinicio individual.`);
-            await orchestrator.restartAgent(agents[0].id);
-          }
-        }
-      }
-    }, 30000); // Revisar cada 30 segundos
-  }
-
-  private async checkAegisLockdown() {
-    // AEGIS monitorea si NEXUS está fuera de control
-    const db = await initDatabase();
-    const recentErrors = await db.all("SELECT * FROM memory WHERE source = 'orchestrator' AND type = 'alert' AND timestamp > datetime('now', '-10 minutes')");
-    
-    if (recentErrors.length > 5) {
-      const msg = "AEGIS: Detectado comportamiento errático en NEXUS. Activando BLOQUEO DE SEGURIDAD (Lockdown).";
-      await updateSetting("safe_mode", "true");
-      await updateSetting("security_lockdown", "true");
-      await this.notifyUser(msg, "critical");
-      await logSecurityEvent({
-        type: "aegis_override",
-        severity: "critical",
-        description: "AEGIS bloqueó a NEXUS por exceso de errores en corto tiempo.",
-        source_ip: "INTERNAL",
-        action: "Forced Safe Mode & Lockdown",
-        is_nexus_blocked: true
-      });
-    }
+      watchdog.updateHeartbeat();
+      await watchdog.runCheck();
+    }, 30000);
   }
 
   private setupTelegram() {
     if (!bot) return;
 
     bot.start((ctx) => {
-      ctx.reply("NEXUS AEGIS v2.0 Online. Valeria reportándose, José Mario. Sistema de seguridad paranoica y orquestación avanzada activo.");
+      ctx.reply("NEXUS AEGIS v4.0 Online. Valeria reportándose, José Mario. Sistema de seguridad paranoica y orquestación avanzada activo.");
     });
 
     bot.command("lockdown", async (ctx) => {
-      await updateSetting("security_lockdown", "true");
-      await updateSetting("safe_mode", "true");
-      ctx.reply("🚨 AEGIS: BLOQUEO TOTAL ACTIVADO. Todas las acciones de NEXUS requieren aprobación manual.");
+      const msg = await aegis.activateLockdown();
+      ctx.reply(msg);
     });
 
     bot.command("unlock", async (ctx) => {
-      await updateSetting("security_lockdown", "false");
-      ctx.reply("🔹 AEGIS: Bloqueo desactivado. Operaciones normales restauradas.");
+      const msg = await aegis.deactivateLockdown();
+      ctx.reply(msg);
     });
 
     bot.on("text", async (ctx) => {
       const message = ctx.message.text;
-      const safeMode = await getSetting("safe_mode") === "true";
       const antiAiLevel = await getSetting("anti_ai_defense_level") || "medium";
       
       // --- DEFENSA ANTI-IA AVANZADA (v4.0) ---
       const now = Date.now();
       const userIp = ctx.from?.id.toString() || "unknown";
       this.requestHistory.push({ timestamp: now, ip: userIp });
-      
-      // Limpiar historial antiguo (> 1 min)
       this.requestHistory = this.requestHistory.filter(r => now - r.timestamp < 60000);
       
       const recentRequests = this.requestHistory.filter(r => r.ip === userIp).length;
@@ -160,12 +86,9 @@ export class Valeria {
       console.log("📩 Telegram:", message);
       
       try {
-        // --- NUEVO FLUJO: ROUTING INTELIGENTE ---
-        // El router decide qué agente debe procesar la tarea
         const simulationMode = await getSetting("simulation_mode") === "true";
         const agentResponse = await router.routeTask(message, "telegram", "medium", { simulate: simulationMode });
         
-        // Usar Nemotron para dar formato a la respuesta final basándose en el resultado del agente
         let finalReply: string;
         try {
           const prompt = `El agente ${agentResponse.agentId || 'NEXUS'} ha procesado la siguiente tarea: "${message}". 
@@ -190,12 +113,10 @@ export class Valeria {
   }
 
   private setupBackups() {
-    // Backup cada 6 horas
     cron.schedule("0 */6 * * *", async () => {
       await this.performBackup("auto_6h");
     });
 
-    // Backup cada 24 horas
     cron.schedule("0 0 * * *", async () => {
       await this.performBackup("auto_24h");
     });
@@ -226,7 +147,7 @@ export class Valeria {
     const runLoop = async () => {
       if (!this.isRunning) return;
 
-      this.lastHeartbeat = Date.now(); // Actualizar latido
+      watchdog.updateHeartbeat();
       
       const safeMode = await getSetting("safe_mode") === "true";
       const experimental = await getSetting("experimental_mode") === "true";
@@ -236,13 +157,11 @@ export class Valeria {
       const eccMotorEnabled = await getSetting("ecc_motor_enabled") === "true";
       let interval = parseInt(await getSetting("autonomous_loop_interval") || "60");
       
-      // Simulación de Detección de Juego (v3.0)
       const isGameRunning = Math.random() > 0.7; // Simulado
       if (isGameRunning && gameControlEnabled) {
         await Memory.record("Detección de Juego: No Man's Sky detectado en primer plano.", "aegis", "info", "medium");
       }
 
-      // --- MOTOR ECC: AUTO-MEJORA (v3.5) ---
       if (eccMotorEnabled && Math.random() > 0.9) {
         const proposalId = Math.random().toString(36).substring(7);
         const proposal = "Valeria (ECC Motor): He detectado una oportunidad de refactorización en el módulo de agentes para mejorar la latencia en un 15%. ¿Deseas aplicar el parche?";
@@ -250,17 +169,8 @@ export class Valeria {
         await this.notifyUser("ECC Motor ha generado una propuesta de auto-mejora.", "medium");
       }
 
-      // --- OBJETIVOS ESTRATÉGICOS (v4.0) ---
-      const goals = await getStrategicGoals();
-      for (const goal of goals) {
-        if (goal.status === 'active' && Math.random() > 0.8) {
-          console.log(`Valeria: Evaluando progreso del objetivo: ${goal.goal}`);
-          // Simulación de avance de objetivo
-          await initDatabase().then(db => db.run("UPDATE strategic_goals SET progress = MIN(100, progress + 5), updated_at = CURRENT_TIMESTAMP WHERE id = ?", [goal.id]));
-        }
-      }
+      await goalSystem.processGoals();
       
-      // Lógica de Modo Bajo Consumo SMARTER (v2.4)
       if (lowPower) {
         const pending = orchestrator.getPendingTasks();
         let cpuUsage = 0;
@@ -271,7 +181,7 @@ export class Valeria {
         } catch (e) {}
 
         if (pending.length === 0 && cpuUsage < 20) {
-          interval = interval * 2; // Duplicar intervalo si no hay tareas y CPU baja
+          interval = interval * 2;
           console.log(`Valeria: Modo Bajo Consumo activo (CPU: ${cpuUsage.toFixed(1)}%). Intervalo ajustado a ${interval}s`);
         }
       }
@@ -284,10 +194,9 @@ export class Valeria {
         return;
       }
 
-      await this.checkAegisLockdown(); // AEGIS vigila a Valeria
+      await aegis.checkLockdown();
 
       try {
-        // Limpieza de logs ocasional (ej: 1% de probabilidad por ciclo)
         if (Math.random() > 0.99) {
           const { cleanOldLogs } = await import("./database");
           await cleanOldLogs();
@@ -301,7 +210,6 @@ export class Valeria {
 
         await Memory.record(logMsg, "valeria", 'info', 'low', { safeMode, experimental });
         
-        // Simulación de detección de anomalías
         if (Math.random() > 0.95) {
           const alert = experimental ? "Actividad experimental detectada. AEGIS monitoreando impacto." : "Detección de actividad anómala en NEXUS. AEGIS evaluando bloqueo preventivo.";
           await this.notifyUser(alert, experimental ? "medium" : "high");
@@ -329,18 +237,10 @@ export class Valeria {
 
   public generateLocalReply(message: string): string {
     const text = message.toLowerCase();
-    if (text.includes("hola")) {
-      return "Hola. Soy Valeria. Sistema NEXUS AEGIS activo.";
-    }
-    if (text.includes("estado")) {
-      return "Sistema operativo. Todos los agentes funcionando. AEGIS monitoreando.";
-    }
-    if (text.includes("seguridad")) {
-      return "AEGIS monitoreando. NEXUS bajo vigilancia estricta. Firewall activo.";
-    }
-    if (text.includes("quien eres") || text.includes("quién eres")) {
-      return "Soy Valeria, el Cerebro Central de NEXUS AEGIS. Tu mano derecha tecnológica, José Mario.";
-    }
+    if (text.includes("hola")) return "Hola. Soy Valeria. Sistema NEXUS AEGIS activo.";
+    if (text.includes("estado")) return "Sistema operativo. Todos los agentes funcionando. AEGIS monitoreando.";
+    if (text.includes("seguridad")) return "AEGIS monitoreando. NEXUS bajo vigilancia estricta. Firewall activo.";
+    if (text.includes("quien eres") || text.includes("quién eres")) return "Soy Valeria, el Cerebro Central de NEXUS AEGIS. Tu mano derecha tecnológica, José Mario.";
     return "Mensaje recibido. Procesando solicitud en el núcleo de NEXUS (Modo Fallback Local).";
   }
 
@@ -355,6 +255,14 @@ export class Valeria {
     const fullMessage = `${prefix}${message}`;
     console.log(`Valeria Notify: ${fullMessage}`);
     
+    if (bot && process.env.TELEGRAM_CHAT_ID) {
+      try {
+        await bot.telegram.sendMessage(process.env.TELEGRAM_CHAT_ID, fullMessage);
+      } catch (e) {
+        console.error("Error al enviar notificación por Telegram:", e);
+      }
+    }
+
     await Memory.record(fullMessage, "valeria", 'alert', severity as any);
   }
 }

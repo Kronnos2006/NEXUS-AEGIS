@@ -1,7 +1,7 @@
 import { updateAgentStatus, logSecurityEvent, getSetting, saveAgentVersion, getAgentVersions, updateSetting, updateAgentMetrics, getAgentMetrics, getStrategicGoals } from "./database";
-import { valeria } from "./valeria";
 import { AGENT_IDS } from "./agents.constants";
 import { Memory } from "./memory/memory";
+import { setOrchestrator, valeria } from "./core";
 
 import crypto from "crypto";
 
@@ -88,24 +88,33 @@ export class MonitorAgent extends BaseAgent {
 // Agente de Seguridad AEGIS (Puente con el IDS de Python)
 export class AegisAgent extends BaseAgent {
   async processTask(task: any) {
-    await this.setStatus("working", `Analizando amenaza: ${task.threat_id}`);
+    await this.setStatus("working", "Analizando amenaza detectada...");
     
-    if (task.type === "brute_force") {
-      await logSecurityEvent({
-        type: "firewall_block",
-        severity: "high",
-        description: `Bloqueo automático de IP: ${task.source_ip}`,
-        source_ip: task.source_ip,
-        action: "IP blocked via Windows Firewall"
-      });
-      await valeria.notifyUser(`AEGIS ha bloqueado la IP ${task.source_ip} tras detectar un ataque de fuerza bruta.`, "high");
+    // Mapeo de datos del IDS (v4.0)
+    const threatType = task.type || "unknown_threat";
+    const severity = task.severity || "medium";
+    const description = task.description || "No description provided";
+    const sourceIp = task.source_ip || "0.0.0.0";
+
+    await logSecurityEvent({
+      type: threatType,
+      severity: severity,
+      description: description,
+      source_ip: sourceIp,
+      action: "ANALYZED_BY_AEGIS"
+    });
+
+    if (severity === "critical" || severity === "high") {
+      await updateSetting("safe_mode", "true");
+      if (valeria) await valeria.notifyUser(`AEGIS: Amenaza ${severity} detectada. Activando Modo Seguro preventivo.`, "critical");
     }
+
+    await this.setStatus("idle", "Análisis de seguridad completado.");
     
-    await this.setStatus("idle", "Amenaza neutralizada.");
-    return { 
-      success: true, 
-      reply: `Valeria: AEGIS ha neutralizado la amenaza ${task.threat_id}. Acción: Bloqueo de IP ejecutado.`,
-      action: "Blocked" 
+    return {
+      success: true,
+      reply: `AEGIS: Amenaza analizada (${threatType}). Nivel: ${severity}. Estado del sistema: ${severity === "critical" ? "MODO SEGURO ACTIVADO" : "Vigilancia activa"}.`,
+      threat_level: severity
     };
   }
 }
@@ -324,6 +333,7 @@ export class AgentOrchestrator {
   private lastCounterReset: number = Date.now();
 
   constructor() {
+    setOrchestrator(this);
     this.initializeAgents();
     this.startCounterResetLoop();
   }

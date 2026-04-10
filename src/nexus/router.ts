@@ -1,8 +1,12 @@
 import { AGENT_IDS, AgentId } from "./agents.constants";
-import { orchestrator } from "./agents";
 import { Memory } from "./memory/memory";
+import { orchestrator, setRouter } from "./core";
+import { skillRegistry } from "./skills";
 
 export class IntelligentRouter {
+  constructor() {
+    setRouter(this);
+  }
   /**
    * Detecta las intenciones del usuario basándose en palabras clave y prioridad.
    */
@@ -138,6 +142,15 @@ export class IntelligentRouter {
     }
 
     return results[0] || { success: false, reply: "No se pudo procesar la tarea." };
+  }
+
+  public suggestSkill(task: string): string | null {
+    const text = task.toLowerCase();
+    if (text.includes("refactor") || text.includes("mejorar código")) return "refactor";
+    if (text.includes("test") || text.includes("prueba")) return "test_generator";
+    if (text.includes("vulnerabilidad") || text.includes("seguridad")) return "vulnerability_scan";
+    if (text.includes("pantalla") || text.includes("ver")) return "screen_vision";
+    return null;
   }
 }
 

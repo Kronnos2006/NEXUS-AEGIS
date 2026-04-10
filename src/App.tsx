@@ -134,6 +134,21 @@ interface UserPreference {
   category: string;
 }
 
+interface StrategicGoal {
+  id: number;
+  goal: string;
+  progress: number;
+  status: string;
+  last_update: string;
+}
+
+interface AgentMetric {
+  agent_id: string;
+  avg_duration: number;
+  success_rate: number;
+  last_health_score: number;
+}
+
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [memory, setMemory] = useState<Memory[]>([]);
@@ -143,6 +158,8 @@ export default function App() {
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [taskHistory, setTaskHistory] = useState<Memory[]>([]);
   const [watchdogLogs, setWatchdogLogs] = useState<WatchdogLog[]>([]);
+  const [agentMetrics, setAgentMetrics] = useState<AgentMetric[]>([]);
+  const [strategicGoals, setStrategicGoals] = useState<StrategicGoal[]>([]);
   const [health, setHealth] = useState<SystemHealth>({ cpu: 0, ram: 0, cpu_temp: 0 });
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'security' | 'agents' | 'system' | 'game' | 'chat'>('dashboard');
@@ -182,6 +199,8 @@ export default function App() {
       health: SystemHealth;
       watchdogLogs: WatchdogLog[];
       gameBots: GameBot[];
+      agentMetrics: AgentMetric[];
+      strategicGoals: StrategicGoal[];
     }) => {
       setAgents(data.agents);
       setMemory(data.memory);
@@ -192,6 +211,8 @@ export default function App() {
       setTaskHistory(data.taskHistory);
       setWatchdogLogs(data.watchdogLogs);
       setGameBots(data.gameBots || []);
+      setAgentMetrics(data.agentMetrics || []);
+      setStrategicGoals(data.strategicGoals || []);
       if (data.health) setHealth(data.health);
       
       // Fetch ECC proposals if memory changed
@@ -652,6 +673,53 @@ export default function App() {
                       <div className="p-4 bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl text-center">
                         <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Estado</p>
                         <p className="text-lg font-bold text-emerald-500">SECURE</p>
+                      </div>
+                    </div>
+
+                    {/* Strategic Goals v4.0 */}
+                    <div className="mt-6 space-y-4">
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <TrendingUp size={14} className="text-emerald-500" /> Objetivos Estratégicos
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {strategicGoals.map(goal => (
+                          <div key={goal.id} className="bg-[#0a0a0a] border border-[#1a1a1a] p-4 rounded-xl">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs font-bold text-white">{goal.goal}</span>
+                              <span className="text-[10px] text-emerald-500 font-mono">{goal.progress}%</span>
+                            </div>
+                            <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${goal.progress}%` }}
+                                className="bg-emerald-500 h-full"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        {strategicGoals.length === 0 && (
+                          <p className="text-[10px] text-gray-600 italic">No hay objetivos estratégicos activos.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Agent Health Metrics v4.0 */}
+                    <div className="mt-6 space-y-4">
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <ActivityIcon size={14} className="text-blue-500" /> Salud de Agentes
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {agentMetrics.map(metric => (
+                          <div key={metric.agent_id} className="bg-[#0a0a0a] border border-[#1a1a1a] p-3 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-300 mb-1 truncate">{metric.agent_id}</p>
+                            <div className="flex justify-between items-end">
+                              <span className="text-[10px] text-gray-500">Health</span>
+                              <span className={`text-xs font-bold ${metric.last_health_score > 80 ? 'text-emerald-500' : 'text-orange-500'}`}>
+                                {metric.last_health_score}%
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

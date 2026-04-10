@@ -5,13 +5,12 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, getAgentMetrics, getStrategicGoals, addStrategicGoal } from "./src/nexus/database";
-import { valeria } from "./src/nexus/valeria";
-import { orchestrator } from "./src/nexus/agents";
+import { initDatabase, getRecentMemory, getAgents, getSecurityLogs, logSecurityEvent, getSetting, updateSetting, getBackups, getWatchdogLogs, getAgentVersions, getAgentMetrics, getStrategicGoals, addStrategicGoal, logBackup } from "./src/nexus/database";
+import { valeria, orchestrator, router } from "./src/nexus/core";
 import { NemotronService } from "./src/nexus/nemotron";
 import { AGENT_IDS } from "./src/nexus/agents.constants";
-import { router } from "./src/nexus/router";
 import { Memory } from "./src/nexus/memory/memory";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -207,11 +206,20 @@ async function startNexusAegis() {
         return res.status(404).json({ success: false, message: "No se encontró ningún backup válido." });
       }
 
+      const dbPath = path.join(process.cwd(), "nexus_aegis.sqlite");
+      if (!fs.existsSync(latestBackup.file_path)) {
+        return res.status(404).json({ success: false, message: "Archivo de backup físico no encontrado." });
+      }
+
       console.log(`SISTEMA: Restaurando backup desde ${latestBackup.file_path}`);
+      fs.copyFileSync(latestBackup.file_path, dbPath);
+
       await Memory.record(`ROLLBACK TOTAL DEL SISTEMA ejecutado. Restaurado a versión del ${latestBackup.timestamp}`, "system", "alert", "critical");
+      if (valeria) await valeria.notifyUser(`Protocolo de Rollback completado. Sistema restaurado a versión del ${latestBackup.timestamp}.`, "critical");
       
-      res.json({ success: true, message: "Rollback del sistema iniciado. El servidor se restaurará a la versión seleccionada.", timestamp: latestBackup.timestamp });
+      res.json({ success: true, message: "Rollback del sistema completado con éxito.", timestamp: latestBackup.timestamp });
     } catch (err) {
+      console.error("Error en rollback:", err);
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
