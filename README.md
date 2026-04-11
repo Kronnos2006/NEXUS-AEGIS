@@ -10,7 +10,7 @@ El sistema está construido para ejecutarse en entornos Windows 11, Linux o cont
 * Seguridad
 * Escalabilidad
 * Orquestación Inteligente
-* IA avanzada (Nemotron NVIDIA)
+* IA avanzada (Gemma 4 + Nemotron)
 
 ---
 
@@ -35,7 +35,10 @@ Code    Aegis   Finance  Assistant
 Agent   Agent   Agent    Agent
             │
             ▼
-[ Nemotron (NVIDIA API) ]
+[ Gemma 4 (Ollama) ]
+            │
+            ▼
+[ Nemotron (Fallback) ]
             │
             ▼
 [ Usuario ]
@@ -53,7 +56,7 @@ Funciones:
 
 * Orquestación multi-agente
 * Gestión de memoria contextual
-* Comunicación con Nemotron
+* Comunicación con Gemma 4 / Nemotron
 * Delegación automática de tareas
 * Control del sistema completo
 
@@ -189,9 +192,10 @@ Funciones:
 
 # Motor IA
 
-El sistema utiliza:
+El sistema utiliza una arquitectura de proveedor híbrida:
 
-Nemotron (NVIDIA API)
+1. **Gemma 4 (Principal)**: Ejecutado localmente vía Ollama. Soporta "Thinking Mode" para razonamiento complejo.
+2. **Nemotron (Fallback)**: Utilizado como respaldo estratégico vía NVIDIA API.
 
 Funciones:
 
@@ -201,7 +205,11 @@ Funciones:
 
 Fallback:
 
-Si Nemotron falla:
+Si Gemma 4 falla:
+
+→ Nemotron (NVIDIA API)
+
+Si ambos fallan:
 
 → generateLocalReply()
 
@@ -336,10 +344,10 @@ docker-compose up --build
 
 # Estado del Proyecto
 
-Versión: v3.8 Alpha
+Versión: v4.0 Alpha
 Estado: Estable
 Arquitectura: Multi-Agente
-IA: Nemotron NVIDIA
+IA: Gemma 4 + Nemotron
 
 ---
 

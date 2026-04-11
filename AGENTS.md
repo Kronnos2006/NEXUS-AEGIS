@@ -7,7 +7,8 @@ ARQUITECTURA NEXUS AEGIS
    - Loop autónomo (60s)
    - Orquestación de agentes
    - Interfaz Telegram (@luma_zvezda_bot)
-   - Toma de decisiones con Nemotron 120B
+   - Toma de decisiones con Gemma 4 (Thinking Mode)
+   - Nemotron como respaldo estratégico
 
 2. SISTEMA AEGIS (SEGURIDAD)
    - IDS: Monitoreo de red con Scapy/Python
